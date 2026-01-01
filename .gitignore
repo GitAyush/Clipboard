@@ -1,0 +1,72 @@
+# =========================
+# .NET / Visual Studio / Windows
+# =========================
+
+# Build results
+**/bin/
+**/obj/
+**/[Dd]ebug/
+**/[Rr]elease/
+**/x64/
+**/x86/
+**/[Aa]ny [Cc]pu/
+**/[Aa]rch/
+
+# Visual Studio cache/options
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.rsuser
+*.vcxproj.user
+
+# MSBuild / NuGet
+*.project.lock.json
+*.lock.json
+project.assets.json
+packages/
+*.nupkg
+*.snupkg
+*.nuget.props
+*.nuget.targets
+nuget.config.user
+
+# Test results / coverage
+TestResults/
+**/*.trx
+**/*.coverage
+**/*.coveragexml
+coverage/
+coverage.*.xml
+
+# Publish output
+**/publish/
+**/Publish/
+
+# Logs
+**/*.log
+
+# ASP.NET / local secrets (keep your production config in source control)
+appsettings.Development.json
+appsettings.Local.json
+secrets.json
+
+# =========================
+# OS junk
+# =========================
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# =========================
+# Editors
+# =========================
+.vscode/
+.idea/
+.fleet/
+*.swp
+*.swo
+
+
