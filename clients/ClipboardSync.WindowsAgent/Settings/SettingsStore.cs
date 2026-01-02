@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.IO;
+using System.Linq;
 
 namespace ClipboardSync.WindowsAgent.Settings;
 

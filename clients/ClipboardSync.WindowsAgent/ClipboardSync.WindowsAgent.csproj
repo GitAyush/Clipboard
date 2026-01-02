@@ -16,7 +16,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="8.0.0" />
-    <PackageReference Include="MessagePack" Version="2.6.101" />
+    <!-- Align with shared protocol to avoid NuGet downgrades -->
+    <PackageReference Include="MessagePack" Version="3.1.4" />
   </ItemGroup>
 
 </Project>

@@ -1,21 +1,19 @@
-using System.Windows;
-
 namespace ClipboardSync.WindowsAgent;
 
-public sealed partial class App : Application
+public sealed partial class App : System.Windows.Application
 {
     private AppHost? _host;
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
         base.OnStartup(e);
 
-        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
         _host = new AppHost();
         _host.Start(e.Args);
     }
 
-    protected override void OnExit(ExitEventArgs e)
+    protected override void OnExit(System.Windows.ExitEventArgs e)
     {
         _host?.Dispose();
         base.OnExit(e);

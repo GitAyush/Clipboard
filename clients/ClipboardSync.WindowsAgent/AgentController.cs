@@ -10,17 +10,30 @@ public sealed class AgentController : IDisposable
 
     private readonly ClipboardLoopGuard _loopGuard = new();
     private readonly AppSettingsSnapshot _settings;
+    private readonly bool _publishEnabledInitial;
     private readonly LogBuffer _log = new();
+    private int _publishEnabled; // 1=true, 0=false
 
     private RelayConnection? _relay;
     private WindowsClipboardPoller? _poller;
 
+    public event Action<string>? StatusChanged;
+
     public AgentController(Settings.AppSettings settings)
     {
         _settings = new AppSettingsSnapshot(settings);
+        _publishEnabledInitial = settings.PublishLocalClipboard;
+        _publishEnabled = _publishEnabledInitial ? 1 : 0;
     }
 
     public LogBuffer Log => _log;
+    public bool PublishEnabled => Volatile.Read(ref _publishEnabled) == 1;
+
+    public void SetPublishEnabled(bool enabled)
+    {
+        Volatile.Write(ref _publishEnabled, enabled ? 1 : 0);
+        _log.Info($"Publish local clipboard: {(enabled ? "ON" : "OFF")}");
+    }
 
     public void Start()
     {
@@ -30,10 +43,14 @@ public sealed class AgentController : IDisposable
             _poller ??= new WindowsClipboardPoller(_settings, _loopGuard, _log);
 
             _relay.ClipboardChanged += OnRemoteClipboardChanged;
+            _relay.StatusChanged += OnRelayStatusChanged;
             _poller.TextChanged += OnLocalClipboardTextChanged;
 
             _poller.Start();
             _ = _relay.ConnectAsync();
+
+            // Apply persisted preference after boot.
+            SetPublishEnabled(_publishEnabledInitial);
         }
     }
 
@@ -44,6 +61,9 @@ public sealed class AgentController : IDisposable
     {
         try
         {
+            if (!PublishEnabled)
+                return;
+
             var now = DateTimeOffset.UtcNow;
             var hash = ClipboardProtocol.ComputeTextHashUtf8(text);
 
@@ -70,14 +90,23 @@ public sealed class AgentController : IDisposable
         try
         {
             if (ClipboardLoopGuard.ShouldIgnoreRemote(_settings.DeviceId, changed.OriginDeviceId))
+            {
+                _log.Info("Received remote event from self; ignoring.");
                 return;
+            }
 
+            _log.Info($"Remote event received; applying to clipboard. origin={changed.OriginDeviceId}");
             _poller?.ApplyRemoteText(changed.Text);
         }
         catch (Exception ex)
         {
             _log.Error("Remote apply failed", ex);
         }
+    }
+
+    private void OnRelayStatusChanged(string status)
+    {
+        StatusChanged?.Invoke(status);
     }
 
     public void Dispose()
@@ -87,6 +116,7 @@ public sealed class AgentController : IDisposable
             if (_relay is not null)
             {
                 _relay.ClipboardChanged -= OnRemoteClipboardChanged;
+                _relay.StatusChanged -= OnRelayStatusChanged;
                 _relay.Dispose();
                 _relay = null;
             }

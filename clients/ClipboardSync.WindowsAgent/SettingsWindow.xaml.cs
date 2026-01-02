@@ -17,6 +17,7 @@ public sealed partial class SettingsWindow : Window
         ServerUrlText.Text = _settings.ServerBaseUrl;
         DeviceNameText.Text = _settings.DeviceName;
         DeviceIdText.Text = _settings.DeviceId.ToString();
+        PublishEnabledCheck.IsChecked = _settings.PublishLocalClipboard;
     }
 
     private void SaveButton_Click(object sender, RoutedEventArgs e)
@@ -24,7 +25,7 @@ public sealed partial class SettingsWindow : Window
         var url = (ServerUrlText.Text ?? "").Trim();
         if (string.IsNullOrWhiteSpace(url))
         {
-            MessageBox.Show(this, "Server URL is required.", "ClipboardSync", MessageBoxButton.OK, MessageBoxImage.Warning);
+            System.Windows.MessageBox.Show(this, "Server URL is required.", "ClipboardSync", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -35,8 +36,9 @@ public sealed partial class SettingsWindow : Window
             _settings.DeviceName = Environment.MachineName;
         }
 
+        _settings.PublishLocalClipboard = PublishEnabledCheck.IsChecked == true;
         _store.Save(_settings);
-        MessageBox.Show(this, "Saved. Restart the app for changes to take effect.", "ClipboardSync", MessageBoxButton.OK, MessageBoxImage.Information);
+        System.Windows.MessageBox.Show(this, "Saved. Some changes may require restarting the app.", "ClipboardSync", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)

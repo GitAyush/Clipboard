@@ -1,5 +1,5 @@
 using System.Drawing;
-using System.Windows;
+using System.IO;
 using System.Windows.Forms;
 using ClipboardSync.WindowsAgent.Settings;
 
@@ -15,6 +15,7 @@ public sealed class TrayIcon : IDisposable
     private SettingsWindow? _settingsWindow;
     private LogWindow? _logWindow;
     private ToolStripMenuItem? _connectionStatusItem;
+    private ToolStripMenuItem? _publishEnabledItem;
 
     public TrayIcon(SettingsStore store, AppSettings settings, AgentController controller)
     {
@@ -34,6 +35,9 @@ public sealed class TrayIcon : IDisposable
         };
 
         _icon.DoubleClick += (_, _) => ShowSettings();
+
+        _controller.StatusChanged += OnStatusChanged;
+        OnStatusChanged("Starting");
     }
 
     private ContextMenuStrip BuildMenu()
@@ -61,6 +65,20 @@ public sealed class TrayIcon : IDisposable
         disconnectItem.Click += async (_, _) => await _controller.DisconnectAsync();
         menu.Items.Add(disconnectItem);
 
+        _publishEnabledItem = new ToolStripMenuItem("Publish local clipboard")
+        {
+            CheckOnClick = true,
+            Checked = _settings.PublishLocalClipboard
+        };
+        _publishEnabledItem.Click += (_, _) =>
+        {
+            var enabled = _publishEnabledItem.Checked;
+            _controller.SetPublishEnabled(enabled);
+            _settings.PublishLocalClipboard = enabled;
+            _store.Save(_settings);
+        };
+        menu.Items.Add(_publishEnabledItem);
+
         var settingsItem = new ToolStripMenuItem("Settings...");
         settingsItem.Click += (_, _) => ShowSettings();
         menu.Items.Add(settingsItem);
@@ -72,15 +90,33 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripSeparator());
 
         var exitItem = new ToolStripMenuItem("Exit");
-        exitItem.Click += (_, _) => Application.Current.Shutdown();
+        exitItem.Click += (_, _) => System.Windows.Application.Current.Shutdown();
         menu.Items.Add(exitItem);
 
         return menu;
     }
 
+    private void OnStatusChanged(string status)
+    {
+        try
+        {
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (_connectionStatusItem is not null)
+                    _connectionStatusItem.Text = $"Status: {status}";
+                if (_icon is not null)
+                    _icon.Text = $"ClipboardSync ({status})";
+            });
+        }
+        catch
+        {
+            // ignore shutdown races
+        }
+    }
+
     private void ShowSettings()
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
             _settingsWindow ??= new SettingsWindow(_store, _settings);
             _settingsWindow.Show();
@@ -90,7 +126,7 @@ public sealed class TrayIcon : IDisposable
 
     private void ShowLog()
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
             _logWindow ??= new LogWindow(_controller.Log);
             _logWindow.Show();
@@ -100,6 +136,8 @@ public sealed class TrayIcon : IDisposable
 
     public void Dispose()
     {
+        _controller.StatusChanged -= OnStatusChanged;
+
         if (_icon is not null)
         {
             _icon.Visible = false;

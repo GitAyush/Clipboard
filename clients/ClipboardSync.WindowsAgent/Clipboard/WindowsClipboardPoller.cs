@@ -12,6 +12,8 @@ public sealed class WindowsClipboardPoller : IDisposable
 
     private readonly DispatcherTimer _timer;
     private string? _lastSeenText;
+    private int _consecutiveReadFailures;
+    private DateTimeOffset _lastReadFailureLogUtc = DateTimeOffset.MinValue;
 
     public event EventHandler<string>? TextChanged;
 
@@ -36,18 +38,21 @@ public sealed class WindowsClipboardPoller : IDisposable
 
     public void ApplyRemoteText(string text)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
             var now = DateTimeOffset.UtcNow;
             _loopGuard.BeginRemoteApply(now);
 
             try
             {
-                var current = TryGetClipboardText();
+                var current = TryGetClipboardTextWithRetry(retries: 1, delayMs: 15);
                 if (current is not null && string.Equals(current, text, StringComparison.Ordinal))
+                {
+                    _log.Info("Remote clipboard text already matches current; skipping set.");
                     return;
+                }
 
-                Clipboard.SetText(text);
+                SetClipboardTextWithRetry(text, retries: 5, delayMs: 40);
                 _lastSeenText = text;
                 _log.Info("Applied remote clipboard text.");
             }
@@ -64,30 +69,65 @@ public sealed class WindowsClipboardPoller : IDisposable
         if (_loopGuard.ShouldIgnoreLocalClipboardEvent(now))
             return;
 
-        try
-        {
-            var text = TryGetClipboardText();
-            if (text is null) return;
+        var text = TryGetClipboardTextWithRetry(retries: 3, delayMs: 15);
+        if (text is null) return;
 
-            if (_lastSeenText is not null && string.Equals(_lastSeenText, text, StringComparison.Ordinal))
-                return;
+        if (_lastSeenText is not null && string.Equals(_lastSeenText, text, StringComparison.Ordinal))
+            return;
 
-            // Note: debounce/duplicate suppression is applied before publishing (in AgentController).
-            _lastSeenText = text;
-            TextChanged?.Invoke(this, text);
-        }
-        catch (Exception ex)
-        {
-            // Clipboard can be temporarily locked by other processes; keep quiet-ish.
-            _log.Warn($"Clipboard read failed: {ex.GetType().Name}");
-        }
+        // Note: debounce/duplicate suppression is applied before publishing (in AgentController).
+        _lastSeenText = text;
+        TextChanged?.Invoke(this, text);
     }
 
-    private static string? TryGetClipboardText()
+    private string? TryGetClipboardTextWithRetry(int retries, int delayMs)
     {
-        if (!Clipboard.ContainsText()) return null;
-        var text = Clipboard.GetText();
-        return string.IsNullOrEmpty(text) ? null : text;
+        for (int attempt = 0; attempt <= retries; attempt++)
+        {
+            try
+            {
+                if (!System.Windows.Clipboard.ContainsText()) return null;
+                var text = System.Windows.Clipboard.GetText();
+                _consecutiveReadFailures = 0;
+                return string.IsNullOrEmpty(text) ? null : text;
+            }
+            catch (Exception) when (attempt < retries)
+            {
+                Thread.Sleep(delayMs);
+            }
+            catch (Exception ex)
+            {
+                // This is commonly COMException when another process holds the clipboard open.
+                _consecutiveReadFailures++;
+
+                var nowUtc = DateTimeOffset.UtcNow;
+                // Avoid log spam: log at most once every ~5s while failing.
+                if (nowUtc - _lastReadFailureLogUtc > TimeSpan.FromSeconds(5))
+                {
+                    _lastReadFailureLogUtc = nowUtc;
+                    _log.Warn($"Clipboard read failed ({_consecutiveReadFailures}x): {ex.GetType().Name}");
+                }
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    private static void SetClipboardTextWithRetry(string text, int retries, int delayMs)
+    {
+        for (int attempt = 0; attempt <= retries; attempt++)
+        {
+            try
+            {
+                System.Windows.Clipboard.SetText(text);
+                return;
+            }
+            catch (Exception) when (attempt < retries)
+            {
+                Thread.Sleep(delayMs);
+            }
+        }
     }
 
     public void Dispose()

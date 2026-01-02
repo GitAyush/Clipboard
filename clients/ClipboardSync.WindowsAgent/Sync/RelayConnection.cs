@@ -1,5 +1,6 @@
 using ClipboardSync.Protocol;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ClipboardSync.WindowsAgent.Sync;
 
@@ -42,6 +43,7 @@ public sealed class RelayConnection : IDisposable
 
             conn.On<ClipboardChanged>(ClipboardChangedMethod, changed =>
             {
+                _log.Info($"Received ClipboardChanged origin={changed.OriginDeviceId} textLen={changed.Text?.Length ?? 0} hash={ClipboardProtocol.HashToHex(changed.TextHash)}");
                 ClipboardChanged?.Invoke(changed);
             });
 
