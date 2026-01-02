@@ -1,0 +1,16 @@
+<Window x:Class="ClipboardSync.WindowsAgent.LogWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ClipboardSync Log" Height="420" Width="800"
+        WindowStartupLocation="CenterScreen">
+  <Grid Margin="10">
+    <TextBox Name="LogText"
+             IsReadOnly="True"
+             FontFamily="Consolas"
+             TextWrapping="NoWrap"
+             VerticalScrollBarVisibility="Auto"
+             HorizontalScrollBarVisibility="Auto" />
+  </Grid>
+</Window>
+
+

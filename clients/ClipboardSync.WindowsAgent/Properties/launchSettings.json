@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "WindowsAgent (A)": {
+      "commandName": "Project",
+      "commandLineArgs": "--profile A"
+    },
+    "WindowsAgent (B)": {
+      "commandName": "Project",
+      "commandLineArgs": "--profile B"
+    }
+  }
+}
+
+
