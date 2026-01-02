@@ -23,6 +23,13 @@ public sealed partial class LogWindow : Window
 
         _log.LineAdded += OnLineAdded;
         Closed += (_, _) => _log.LineAdded -= OnLineAdded;
+
+        Closing += (_, e) =>
+        {
+            if (AppExitState.IsExiting) return;
+            e.Cancel = true;
+            Hide();
+        };
     }
 
     private void OnLineAdded(string line)

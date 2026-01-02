@@ -12,6 +12,9 @@ public sealed class RelayConnection : IDisposable
     private const string ClipboardPointerChangedMethod = "ClipboardPointerChanged";
     private const string JoinRoomMethod = "JoinRoom";
     private const string ClipboardPointerPublishMethod = "ClipboardPointerPublish";
+    private const string GetHistoryMethod = "GetHistory";
+    private const string GetHistoryTextMethod = "GetHistoryText";
+    private const string FilePublishMethod = "FilePublish";
 
     private readonly AppSettingsSnapshot _settings;
     private readonly LogBuffer _log;
@@ -87,6 +90,14 @@ public sealed class RelayConnection : IDisposable
             await conn.StartAsync();
             _log.Info("Connected to relay.");
             StatusChanged?.Invoke("Connected");
+
+            // Always join room for both Relay and Drive modes.
+            // Relay mode uses room scoping for both payload + history.
+            if (!string.IsNullOrWhiteSpace(_settings.RoomId) && !string.IsNullOrWhiteSpace(_settings.RoomSecret))
+            {
+                await conn.InvokeAsync(JoinRoomMethod, _settings.RoomId, _settings.RoomSecret);
+                _log.Info($"Joined room. roomId={_settings.RoomId}");
+            }
         }
         catch (Exception ex)
         {
@@ -144,6 +155,41 @@ public sealed class RelayConnection : IDisposable
             return Task.CompletedTask;
 
         return conn.InvokeAsync(ClipboardPointerPublishMethod, publish);
+    }
+
+    public Task PublishFileAsync(ClipboardFilePublish publish)
+    {
+        HubConnection? conn;
+        lock (_gate) conn = _connection;
+
+        if (conn is null || conn.State != HubConnectionState.Connected)
+            return Task.CompletedTask;
+
+        return conn.InvokeAsync(FilePublishMethod, publish);
+    }
+
+    public async Task<HistoryItem[]> GetHistoryAsync(int limit)
+    {
+        HubConnection? conn;
+        lock (_gate) conn = _connection;
+
+        if (conn is null || conn.State != HubConnectionState.Connected)
+            return Array.Empty<HistoryItem>();
+
+        var resp = await conn.InvokeAsync<GetHistoryResponse>(GetHistoryMethod, new GetHistoryRequest(limit));
+        return resp?.History?.Items ?? Array.Empty<HistoryItem>();
+    }
+
+    public async Task<string?> GetHistoryTextAsync(string itemId)
+    {
+        HubConnection? conn;
+        lock (_gate) conn = _connection;
+
+        if (conn is null || conn.State != HubConnectionState.Connected)
+            return null;
+
+        var resp = await conn.InvokeAsync<GetHistoryTextResponse>(GetHistoryTextMethod, new GetHistoryTextRequest(itemId));
+        return resp?.Text;
     }
 
     private static string BuildHubUrl(string serverBaseUrl)

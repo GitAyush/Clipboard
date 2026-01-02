@@ -13,9 +13,15 @@ namespace ClipboardSync.Protocol;
 public static class ClipboardProtocol
 {
     /// <summary>
-    /// Phase 1 constraint: cap clipboard text payloads to reduce abuse and memory pressure.
+    /// Default client setting: cap inline clipboard text payloads to reduce abuse and memory pressure.
     /// </summary>
-    public const int MaxTextBytesUtf8 = 64 * 1024;
+    public const int DefaultMaxTextBytesUtf8 = 64 * 1024;
+
+    /// <summary>
+    /// Absolute upper bound supported by the protocol/server for inline clipboard text payloads.
+    /// Clients may enforce lower limits (e.g., 64KB) via settings.
+    /// </summary>
+    public const int MaxTextBytesUtf8 = 256 * 1024;
 
     /// <summary>
     /// Computes a stable SHA-256 hash over the UTF-8 bytes of <paramref name="text"/>.
@@ -123,6 +129,90 @@ public sealed record ClipboardPointerPublish(
 [MessagePackObject]
 public sealed record ClipboardPointerChanged(
     [property: Key(0)] ClipboardItemPointer Pointer
+);
+
+public enum HistoryItemKind
+{
+    Text = 0,
+    File = 1
+}
+
+/// <summary>
+/// History item metadata. In Relay mode the server may store payload; in Drive mode payload lives in Drive.
+/// This DTO intentionally supports both modes via optional storage pointers.
+/// </summary>
+[MessagePackObject]
+public sealed record HistoryItem(
+    /// <summary>Unique id for the history item (stable within a room).</summary>
+    [property: Key(0)] string Id,
+    /// <summary>Room/group id that owns this history item.</summary>
+    [property: Key(1)] string RoomId,
+    /// <summary>Type of item (text/file).</summary>
+    [property: Key(2)] HistoryItemKind Kind,
+    /// <summary>Origin device that created the item.</summary>
+    [property: Key(3)] Guid OriginDeviceId,
+    /// <summary>UTC timestamp (ms) for ordering.</summary>
+    [property: Key(4)] long TsUtcMs,
+    /// <summary>Human-friendly title (e.g., filename or first line of text).</summary>
+    [property: Key(5)] string Title,
+    /// <summary>Optional preview (truncated text).</summary>
+    [property: Key(6)] string? Preview,
+    /// <summary>Size of payload in bytes (UTF-8 bytes for text; file size for file).</summary>
+    [property: Key(7)] long SizeBytes,
+    /// <summary>Hash of content (SHA-256 over UTF-8 text or file bytes).</summary>
+    [property: Key(8)] byte[] ContentHash,
+    /// <summary>Content type string (e.g., text/plain, application/octet-stream).</summary>
+    [property: Key(9)] string ContentType,
+    /// <summary>Drive mode: provider file id (e.g., Google Drive fileId). Null for relay text items.</summary>
+    [property: Key(10)] string? ProviderFileId,
+    /// <summary>Drive mode: opaque object key (client-defined). Null for relay text items.</summary>
+    [property: Key(11)] string? ObjectKey
+);
+
+[MessagePackObject]
+public sealed record HistoryList(
+    [property: Key(0)] string RoomId,
+    [property: Key(1)] HistoryItem[] Items
+);
+
+/// <summary>Client → Server: request history list for the joined room.</summary>
+[MessagePackObject]
+public sealed record GetHistoryRequest(
+    [property: Key(0)] int Limit
+);
+
+/// <summary>Server → Client: response containing history list.</summary>
+[MessagePackObject]
+public sealed record GetHistoryResponse(
+    [property: Key(0)] HistoryList History
+);
+
+/// <summary>Server → Clients: notify that a new history item was added.</summary>
+[MessagePackObject]
+public sealed record HistoryItemAdded(
+    [property: Key(0)] HistoryItem Item
+);
+
+/// <summary>Client → Server: request full text content for a history item (Relay mode).</summary>
+[MessagePackObject]
+public sealed record GetHistoryTextRequest(
+    [property: Key(0)] string ItemId
+);
+
+/// <summary>Server → Client: full text for a history item (Relay mode).</summary>
+[MessagePackObject]
+public sealed record GetHistoryTextResponse(
+    [property: Key(0)] string ItemId,
+    [property: Key(1)] string Text
+);
+
+/// <summary>Client → Server: publish a file payload (Relay mode only).</summary>
+[MessagePackObject]
+public sealed record ClipboardFilePublish(
+    [property: Key(0)] Guid DeviceId,
+    [property: Key(1)] string FileName,
+    [property: Key(2)] string ContentType,
+    [property: Key(3)] byte[] Bytes
 );
 
 

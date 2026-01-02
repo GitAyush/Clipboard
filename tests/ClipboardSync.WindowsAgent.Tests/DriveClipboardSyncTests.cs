@@ -1,6 +1,7 @@
 using ClipboardSync.Protocol;
 using ClipboardSync.WindowsAgent;
 using ClipboardSync.WindowsAgent.Drive;
+using System.IO;
 
 namespace ClipboardSync.WindowsAgent.Tests;
 
@@ -16,7 +17,9 @@ public sealed class DriveClipboardSyncTests
             SyncMode: "Drive",
             RoomId: "room1",
             RoomSecret: "secret",
-            GoogleClientSecretsPath: "ignored");
+            GoogleClientSecretsPath: "ignored",
+            MaxInlineTextBytes: 64 * 1024,
+            MaxUploadBytes: 1 * 1024 * 1024);
 
         var relay = new FakeRelay();
         var clipboard = new FakeClipboard();
@@ -48,7 +51,9 @@ public sealed class DriveClipboardSyncTests
             SyncMode: "Drive",
             RoomId: "room1",
             RoomSecret: "secret",
-            GoogleClientSecretsPath: "ignored");
+            GoogleClientSecretsPath: "ignored",
+            MaxInlineTextBytes: 64 * 1024,
+            MaxUploadBytes: 1 * 1024 * 1024);
 
         var relay = new FakeRelay();
         var clipboard = new FakeClipboard();
@@ -88,7 +93,9 @@ public sealed class DriveClipboardSyncTests
             SyncMode: "Drive",
             RoomId: "room1",
             RoomSecret: "secret",
-            GoogleClientSecretsPath: "ignored");
+            GoogleClientSecretsPath: "ignored",
+            MaxInlineTextBytes: 64 * 1024,
+            MaxUploadBytes: 1 * 1024 * 1024);
 
         var relay = new FakeRelay();
         var clipboard = new FakeClipboard();
@@ -126,7 +133,9 @@ public sealed class DriveClipboardSyncTests
             SyncMode: "Drive",
             RoomId: "room1",
             RoomSecret: "secret",
-            GoogleClientSecretsPath: "ignored");
+            GoogleClientSecretsPath: "ignored",
+            MaxInlineTextBytes: 64 * 1024,
+            MaxUploadBytes: 1 * 1024 * 1024);
 
         var relay = new FakeRelay();
         var clipboard = new FakeClipboard();
@@ -164,7 +173,9 @@ public sealed class DriveClipboardSyncTests
             SyncMode: "Drive",
             RoomId: "room1",
             RoomSecret: "secret",
-            GoogleClientSecretsPath: "ignored");
+            GoogleClientSecretsPath: "ignored",
+            MaxInlineTextBytes: 64 * 1024,
+            MaxUploadBytes: 1 * 1024 * 1024);
 
         var relay = new FakeRelay();
         var clipboard = new FakeClipboard();
@@ -237,6 +248,19 @@ public sealed class DriveClipboardSyncTests
         {
             DownloadCalls++;
             return Task.FromResult(DownloadTextResult);
+        }
+
+        public Task<(string fileId, long sizeBytes)> UploadFileAsync(string objectKey, string fileName, Stream content, string contentType, CancellationToken ct)
+        {
+            UploadCalls++;
+            LastObjectKey = objectKey;
+            return Task.FromResult((LastUploadedFileId, 0L));
+        }
+
+        public Task DownloadFileToPathAsync(string fileId, string path, CancellationToken ct)
+        {
+            DownloadCalls++;
+            return Task.CompletedTask;
         }
     }
 }

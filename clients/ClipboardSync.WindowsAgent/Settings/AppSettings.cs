@@ -8,6 +8,17 @@ public sealed class AppSettings
     public bool PublishLocalClipboard { get; set; } = true;
 
     /// <summary>
+    /// Max UTF-8 bytes allowed for inline text sync (default 64KB, optional 256KB).
+    /// Text larger than this should use the "upload as file" flow (Drive mode / future).
+    /// </summary>
+    public int MaxInlineTextBytes { get; set; } = ClipboardSync.Protocol.ClipboardProtocol.DefaultMaxTextBytesUtf8;
+
+    /// <summary>
+    /// Max bytes allowed for explicit uploads (default 1MB), configurable up to 10MB.
+    /// </summary>
+    public int MaxUploadBytes { get; set; } = 1 * 1024 * 1024;
+
+    /// <summary>
     /// Sync mode:
     /// - Relay: server relays payload (legacy Phase 1)
     /// - Drive: clipboard payload goes to Google Drive; server only relays pointers/metadata

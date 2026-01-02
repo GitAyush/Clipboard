@@ -46,7 +46,9 @@ public sealed class RelayConnectionIntegrationTests
                 SyncMode: "Drive",
                 RoomId: roomId,
                 RoomSecret: roomSecret,
-                GoogleClientSecretsPath: "");
+                GoogleClientSecretsPath: "",
+                MaxInlineTextBytes: 64 * 1024,
+                MaxUploadBytes: 1 * 1024 * 1024);
 
             var log = new LogBuffer();
             var relay = new RelayConnection(settings, log);

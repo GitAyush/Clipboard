@@ -16,6 +16,13 @@ public sealed partial class SettingsWindow : Window
         _settings = settings;
         InitializeComponent();
 
+        Closing += (_, e) =>
+        {
+            if (AppExitState.IsExiting) return;
+            e.Cancel = true;
+            Hide();
+        };
+
         ServerUrlText.Text = _settings.ServerBaseUrl;
         DeviceNameText.Text = _settings.DeviceName;
         DeviceIdText.Text = _settings.DeviceId.ToString();
@@ -26,6 +33,12 @@ public sealed partial class SettingsWindow : Window
         // SyncModeCombo selection
         var mode = (_settings.SyncMode ?? "Relay").Trim();
         SyncModeCombo.SelectedIndex = string.Equals(mode, "Drive", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+
+        // MaxInlineTextCombo selection
+        MaxInlineTextCombo.SelectedIndex = _settings.MaxInlineTextBytes >= 256 * 1024 ? 1 : 0;
+
+        // MaxUpload in MB
+        MaxUploadMbText.Text = Math.Max(1, _settings.MaxUploadBytes / (1024 * 1024)).ToString();
 
         PublishEnabledCheck.IsChecked = _settings.PublishLocalClipboard;
     }
@@ -54,6 +67,14 @@ public sealed partial class SettingsWindow : Window
         if (string.IsNullOrWhiteSpace(_settings.RoomId)) _settings.RoomId = "default";
         if (string.IsNullOrWhiteSpace(_settings.SyncMode)) _settings.SyncMode = "Relay";
 
+        // Limits
+        var maxInline = MaxInlineTextCombo.SelectedIndex == 1 ? 256 * 1024 : 64 * 1024;
+        _settings.MaxInlineTextBytes = maxInline;
+
+        if (!int.TryParse((MaxUploadMbText.Text ?? "").Trim(), out var mb)) mb = 1;
+        mb = Math.Clamp(mb, 1, 10);
+        _settings.MaxUploadBytes = mb * 1024 * 1024;
+
         _settings.PublishLocalClipboard = PublishEnabledCheck.IsChecked == true;
         _store.Save(_settings);
         System.Windows.MessageBox.Show(this, "Saved. Some changes may require restarting the app.", "ClipboardSync", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -61,7 +82,7 @@ public sealed partial class SettingsWindow : Window
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
-        Close();
+        Hide();
     }
 }
 

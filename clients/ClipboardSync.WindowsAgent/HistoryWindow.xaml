@@ -1,0 +1,37 @@
+<Window x:Class="ClipboardSync.WindowsAgent.HistoryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ClipboardSync History" Height="520" Width="860"
+        WindowStartupLocation="CenterScreen">
+  <Grid Margin="12">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+      <Button Width="90" Margin="0,0,8,0" Name="RefreshButton" Click="RefreshButton_Click">Refresh</Button>
+      <TextBlock Name="StatusText" VerticalAlignment="Center" Foreground="Gray">Ready</TextBlock>
+    </StackPanel>
+
+    <DataGrid Grid.Row="1" Name="HistoryGrid" AutoGenerateColumns="False" IsReadOnly="True"
+              SelectionMode="Single" SelectionChanged="HistoryGrid_SelectionChanged">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Time (UTC)" Binding="{Binding TsUtcMs}" Width="140" />
+        <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="70" />
+        <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*" />
+        <DataGridTextColumn Header="Size" Binding="{Binding SizeBytes}" Width="90" />
+        <DataGridTextColumn Header="Origin" Binding="{Binding OriginDeviceId}" Width="240" />
+      </DataGrid.Columns>
+    </DataGrid>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+      <Button Width="90" Margin="0,0,8,0" Name="CopyButton" Click="CopyButton_Click" IsEnabled="False">Copy</Button>
+      <Button Width="110" Margin="0,0,8,0" Name="DownloadButton" Click="DownloadButton_Click" IsEnabled="False">Download</Button>
+      <Button Width="90" Name="CloseButton" Click="CloseButton_Click">Close</Button>
+    </StackPanel>
+  </Grid>
+</Window>
+
+

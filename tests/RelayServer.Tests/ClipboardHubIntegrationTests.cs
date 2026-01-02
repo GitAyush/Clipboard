@@ -15,6 +15,9 @@ public sealed class ClipboardHubIntegrationTests
         _ = factory.CreateClient();
         var hubUrl = new Uri(factory.Server.BaseAddress, "/hub/clipboard");
 
+        const string roomId = "room-relay";
+        const string roomSecret = "secret";
+
         var received = new TaskCompletionSource<ClipboardChanged>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         await using var receiver = new HubConnectionBuilder()
@@ -28,6 +31,7 @@ public sealed class ClipboardHubIntegrationTests
 
         receiver.On<ClipboardChanged>("ClipboardChanged", msg => received.TrySetResult(msg));
         await receiver.StartAsync();
+        await receiver.InvokeAsync("JoinRoom", roomId, roomSecret);
 
         await using var sender = new HubConnectionBuilder()
             .WithUrl(hubUrl, o =>
@@ -38,6 +42,7 @@ public sealed class ClipboardHubIntegrationTests
             .AddMessagePackProtocol()
             .Build();
         await sender.StartAsync();
+        await sender.InvokeAsync("JoinRoom", roomId, roomSecret);
 
         var text = "hello from test";
         var publish = new ClipboardPublish(
@@ -58,11 +63,112 @@ public sealed class ClipboardHubIntegrationTests
     }
 
     [Fact]
+    public async Task GetHistory_ReturnsLatestItems_AndGetHistoryText_ReturnsPayload()
+    {
+        await using var factory = new RelayServerAppFactory();
+        _ = factory.CreateClient();
+        var hubUrl = new Uri(factory.Server.BaseAddress, "/hub/clipboard");
+
+        const string roomId = "room-history";
+        const string roomSecret = "secret";
+
+        await using var sender = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o =>
+            {
+                o.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                o.Transports = HttpTransportType.LongPolling;
+            })
+            .AddMessagePackProtocol()
+            .Build();
+        await sender.StartAsync();
+        await sender.InvokeAsync("JoinRoom", roomId, roomSecret);
+
+        var text1 = "first";
+        var p1 = new ClipboardPublish(
+            DeviceId: Guid.NewGuid(),
+            ClientItemId: Guid.NewGuid(),
+            TsClientUtcMs: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            Text: text1,
+            TextHash: ClipboardProtocol.ComputeTextHashUtf8(text1));
+
+        await sender.InvokeAsync("ClipboardPublish", p1);
+
+        var text2 = "second";
+        var p2 = new ClipboardPublish(
+            DeviceId: Guid.NewGuid(),
+            ClientItemId: Guid.NewGuid(),
+            TsClientUtcMs: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            Text: text2,
+            TextHash: ClipboardProtocol.ComputeTextHashUtf8(text2));
+
+        await sender.InvokeAsync("ClipboardPublish", p2);
+
+        var hist = await sender.InvokeAsync<GetHistoryResponse>("GetHistory", new GetHistoryRequest(10));
+        Assert.Equal(roomId, hist.History.RoomId);
+        Assert.True(hist.History.Items.Length >= 2);
+        Assert.Equal(HistoryItemKind.Text, hist.History.Items[0].Kind);
+        Assert.Equal(HistoryItemKind.Text, hist.History.Items[1].Kind);
+
+        // Newest first: second should be at index 0.
+        Assert.Equal(text2, hist.History.Items[0].Title);
+
+        var itemId = hist.History.Items[0].Id;
+        var payload = await sender.InvokeAsync<GetHistoryTextResponse>("GetHistoryText", new GetHistoryTextRequest(itemId));
+        Assert.Equal(itemId, payload.ItemId);
+        Assert.Equal(text2, payload.Text);
+    }
+
+    [Fact]
+    public async Task FilePublish_AddsHistoryItem_AndDownloadEndpointReturnsBytes()
+    {
+        await using var factory = new RelayServerAppFactory();
+        var http = factory.CreateClient();
+        var hubUrl = new Uri(factory.Server.BaseAddress, "/hub/clipboard");
+
+        const string roomId = "room-files";
+        const string roomSecret = "secret";
+
+        await using var sender = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o =>
+            {
+                o.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                o.Transports = HttpTransportType.LongPolling;
+            })
+            .AddMessagePackProtocol()
+            .Build();
+        await sender.StartAsync();
+        await sender.InvokeAsync("JoinRoom", roomId, roomSecret);
+
+        var payload = "abc"u8.ToArray();
+        var deviceId = Guid.NewGuid();
+
+        await sender.InvokeAsync("FilePublish", new ClipboardFilePublish(
+            DeviceId: deviceId,
+            FileName: "file.bin",
+            ContentType: "application/octet-stream",
+            Bytes: payload));
+
+        var hist = await sender.InvokeAsync<GetHistoryResponse>("GetHistory", new GetHistoryRequest(10));
+        var fileItem = hist.History.Items.First(i => i.Kind == HistoryItemKind.File);
+
+        Assert.Equal("file.bin", fileItem.Title);
+        Assert.Equal(payload.Length, fileItem.SizeBytes);
+
+        var resp = await http.GetAsync($"/download/{roomId}/{fileItem.Id}");
+        resp.EnsureSuccessStatusCode();
+        var downloaded = await resp.Content.ReadAsByteArrayAsync();
+        Assert.Equal(payload, downloaded);
+    }
+
+    [Fact]
     public async Task OnConnected_SendsLatestClipboardChanged_ToNewClient()
     {
         await using var factory = new RelayServerAppFactory();
         _ = factory.CreateClient();
         var hubUrl = new Uri(factory.Server.BaseAddress, "/hub/clipboard");
+
+        const string roomId = "room-latest-relay";
+        const string roomSecret = "secret";
 
         // First client publishes, establishing "latest".
         await using var publisher = new HubConnectionBuilder()
@@ -74,6 +180,7 @@ public sealed class ClipboardHubIntegrationTests
             .AddMessagePackProtocol()
             .Build();
         await publisher.StartAsync();
+        await publisher.InvokeAsync("JoinRoom", roomId, roomSecret);
 
         var text = "latest value";
         var publish = new ClipboardPublish(
@@ -84,7 +191,7 @@ public sealed class ClipboardHubIntegrationTests
             TextHash: ClipboardProtocol.ComputeTextHashUtf8(text));
         await publisher.InvokeAsync("ClipboardPublish", publish);
 
-        // Second client connects and should immediately receive latest via OnConnectedAsync.
+        // Second client connects, joins the room and should immediately receive latest via JoinRoom convergence.
         var received = new TaskCompletionSource<ClipboardChanged>(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var lateJoiner = new HubConnectionBuilder()
             .WithUrl(hubUrl, o =>
@@ -96,6 +203,7 @@ public sealed class ClipboardHubIntegrationTests
             .Build();
         lateJoiner.On<ClipboardChanged>("ClipboardChanged", msg => received.TrySetResult(msg));
         await lateJoiner.StartAsync();
+        await lateJoiner.InvokeAsync("JoinRoom", roomId, roomSecret);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var changed = await received.Task.WaitAsync(cts.Token);

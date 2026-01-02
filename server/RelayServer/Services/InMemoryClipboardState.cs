@@ -1,30 +1,26 @@
+using System.Collections.Concurrent;
 using ClipboardSync.Protocol;
 
 namespace RelayServer.Services;
 
 /// <summary>
-/// Phase 1: ephemeral in-memory clipboard state (latest item only).
-/// Used to push the latest clipboard value to newly connected clients.
+/// Ephemeral in-memory clipboard state (latest item per room).
+/// Used to push the latest clipboard value to newly joined clients.
 /// </summary>
 public sealed class InMemoryClipboardState
 {
-    private readonly object _gate = new();
-    private ClipboardChanged? _latest;
+    private readonly ConcurrentDictionary<string, ClipboardChanged> _latestByRoom = new(StringComparer.Ordinal);
 
-    public ClipboardChanged? GetLatest()
+    public ClipboardChanged? GetLatest(string roomId)
     {
-        lock (_gate)
-        {
-            return _latest;
-        }
+        if (string.IsNullOrWhiteSpace(roomId)) return null;
+        return _latestByRoom.TryGetValue(roomId, out var v) ? v : null;
     }
 
-    public void SetLatest(ClipboardChanged changed)
+    public void SetLatest(string roomId, ClipboardChanged changed)
     {
-        lock (_gate)
-        {
-            _latest = changed;
-        }
+        if (string.IsNullOrWhiteSpace(roomId)) return;
+        _latestByRoom[roomId] = changed;
     }
 }
 

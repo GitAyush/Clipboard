@@ -17,8 +17,10 @@ public sealed class TrayIcon : IDisposable
     private NotifyIcon? _icon;
     private SettingsWindow? _settingsWindow;
     private LogWindow? _logWindow;
+    private HistoryWindow? _historyWindow;
     private ToolStripMenuItem? _connectionStatusItem;
     private ToolStripMenuItem? _publishEnabledItem;
+    private ToolStripMenuItem? _recentMenu;
 
     public TrayIcon(SettingsStore store, AppSettings settings, AgentController controller)
     {
@@ -82,6 +84,18 @@ public sealed class TrayIcon : IDisposable
         };
         menu.Items.Add(_publishEnabledItem);
 
+        _recentMenu = new ToolStripMenuItem("Recent (last 5)");
+        _recentMenu.DropDownOpening += async (_, _) => await PopulateRecentAsync();
+        menu.Items.Add(_recentMenu);
+
+        var historyItem = new ToolStripMenuItem("Open History...");
+        historyItem.Click += (_, _) => ShowHistory();
+        menu.Items.Add(historyItem);
+
+        var uploadFileItem = new ToolStripMenuItem("Upload file...");
+        uploadFileItem.Click += async (_, _) => await UploadFileAsync();
+        menu.Items.Add(uploadFileItem);
+
         var settingsItem = new ToolStripMenuItem("Settings...");
         settingsItem.Click += (_, _) => ShowSettings();
         menu.Items.Add(settingsItem);
@@ -97,7 +111,11 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripSeparator());
 
         var exitItem = new ToolStripMenuItem("Exit");
-        exitItem.Click += (_, _) => System.Windows.Application.Current.Shutdown();
+        exitItem.Click += (_, _) =>
+        {
+            AppExitState.IsExiting = true;
+            System.Windows.Application.Current.Shutdown();
+        };
         menu.Items.Add(exitItem);
 
         return menu;
@@ -109,6 +127,7 @@ public sealed class TrayIcon : IDisposable
         {
             var psi = RestartHelper.CreateRestartStartInfo();
             Process.Start(psi);
+            AppExitState.IsExiting = true;
             System.Windows.Application.Current.Shutdown();
         }
         catch (Exception ex)
@@ -153,6 +172,115 @@ public sealed class TrayIcon : IDisposable
             _logWindow.Show();
             _logWindow.Activate();
         });
+    }
+
+    private void ShowHistory()
+    {
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        {
+            _historyWindow ??= new HistoryWindow(_controller);
+            _historyWindow.Show();
+            _historyWindow.Activate();
+        });
+    }
+
+    private async Task PopulateRecentAsync()
+    {
+        if (_recentMenu is null) return;
+
+        try
+        {
+<<<<<<< Current (Your changes)
+            _recentMenu.DropDownItems.Clear();
+            var items = await _controller.GetRemoteHistoryAsync(5);
+
+            if (items.Length == 0)
+            {
+                _recentMenu.DropDownItems.Add(new ToolStripMenuItem("(empty)") { Enabled = false });
+                return;
+            }
+
+            foreach (var it in items)
+            {
+                var label = it.Title;
+                if (string.IsNullOrWhiteSpace(label)) label = it.Id;
+                if (label.Length > 70) label = label.Substring(0, 70) + "...";
+
+                var mi = new ToolStripMenuItem(label)
+                {
+                    Enabled = it.Kind == ClipboardSync.Protocol.HistoryItemKind.Text
+                };
+
+                mi.Click += async (_, _) => await _controller.CopyHistoryItemToClipboardAsync(it);
+                _recentMenu.DropDownItems.Add(mi);
+            }
+        }
+        catch (Exception ex)
+        {
+            _recentMenu.DropDownItems.Clear();
+            _recentMenu.DropDownItems.Add(new ToolStripMenuItem($"(error: {ex.Message})") { Enabled = false });
+=======
+            // Show something immediately; we'll replace after async load.
+            _recentMenu.DropDownItems.Clear();
+            _recentMenu.DropDownItems.Add(new ToolStripMenuItem("(loading...)") { Enabled = false });
+
+            var items = await _controller.GetRemoteHistoryAsync(5);
+
+            // Ensure we mutate WinForms menu items on the UI thread (avoids "empty" menu due to cross-thread updates).
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                _recentMenu.DropDownItems.Clear();
+
+                if (items.Length == 0)
+                {
+                    _recentMenu.DropDownItems.Add(new ToolStripMenuItem("(empty)") { Enabled = false });
+                    return;
+                }
+
+                foreach (var it in items)
+                {
+                    var label = it.Title;
+                    if (string.IsNullOrWhiteSpace(label)) label = it.Id;
+                    if (label.Length > 70) label = label.Substring(0, 70) + "...";
+
+                    var mi = new ToolStripMenuItem(label)
+                    {
+                        Enabled = it.Kind == ClipboardSync.Protocol.HistoryItemKind.Text
+                    };
+
+                    mi.Click += async (_, _) => await _controller.CopyHistoryItemToClipboardAsync(it);
+                    _recentMenu.DropDownItems.Add(mi);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                _recentMenu.DropDownItems.Clear();
+                _recentMenu.DropDownItems.Add(new ToolStripMenuItem($"(error: {ex.Message})") { Enabled = false });
+            });
+>>>>>>> Incoming (Background Agent changes)
+        }
+    }
+
+    private async Task UploadFileAsync()
+    {
+        try
+        {
+            using var dlg = new OpenFileDialog
+            {
+                Title = "Upload file to ClipboardSync",
+                Multiselect = false
+            };
+
+            if (dlg.ShowDialog() != DialogResult.OK) return;
+            await _controller.UploadFileAsync(dlg.FileName);
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"Upload failed: {ex.Message}", "ClipboardSync");
+        }
     }
 
     public void Dispose()

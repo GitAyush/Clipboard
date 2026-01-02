@@ -31,6 +31,14 @@ dotnet build .\ClipboardSync.sln -c Release
 dotnet test .\ClipboardSync.sln -c Release
 ```
 
+### Publish Windows agent (self-contained, single-file)
+
+This stops any running tray process first (to avoid file-lock publish failures), then publishes to `.\artifacts\windows-agent\win-x64\`.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\publish-agent.ps1
+```
+
 ### Coverage (optional)
 
 ```powershell

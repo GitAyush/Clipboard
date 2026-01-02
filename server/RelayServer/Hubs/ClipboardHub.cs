@@ -1,4 +1,5 @@
 using System.Text;
+using System.Security.Cryptography;
 using ClipboardSync.Protocol;
 using Microsoft.AspNetCore.SignalR;
 using RelayServer.Services;
@@ -13,31 +14,29 @@ public sealed class ClipboardHub : Hub
 {
     private const string ClipboardChangedMethod = "ClipboardChanged";
     private const string ClipboardPointerChangedMethod = "ClipboardPointerChanged";
+    private const string HistoryItemAddedMethod = "HistoryItemAdded";
     private const string JoinedRoomItemKey = "roomId";
 
     private readonly InMemoryClipboardState _state;
     private readonly InMemoryRoomRegistry _rooms;
     private readonly InMemoryPointerState _pointers;
+    private readonly InMemoryHistoryState _history;
+    private readonly InMemoryFilePayloadStore _files;
     private readonly ILogger<ClipboardHub> _logger;
 
-    public ClipboardHub(InMemoryClipboardState state, InMemoryRoomRegistry rooms, InMemoryPointerState pointers, ILogger<ClipboardHub> logger)
+    public ClipboardHub(InMemoryClipboardState state, InMemoryRoomRegistry rooms, InMemoryPointerState pointers, InMemoryHistoryState history, InMemoryFilePayloadStore files, ILogger<ClipboardHub> logger)
     {
         _state = state;
         _rooms = rooms;
         _pointers = pointers;
+        _history = history;
+        _files = files;
         _logger = logger;
     }
 
     public override async Task OnConnectedAsync()
     {
         _logger.LogInformation("Client connected: {ConnectionId}", Context.ConnectionId);
-
-        // Push latest value to new connections so they immediately converge.
-        var latest = _state.GetLatest();
-        if (latest is not null)
-        {
-            await Clients.Caller.SendAsync(ClipboardChangedMethod, latest);
-        }
 
         await base.OnConnectedAsync();
     }
@@ -61,6 +60,7 @@ public sealed class ClipboardHub : Hub
     /// </summary>
     public async Task ClipboardPublish(ClipboardPublish publish)
     {
+        var roomId = GetJoinedRoomIdOrThrow();
         var computedHash = ValidateAndComputeHash(publish);
 
         var changed = new ClipboardChanged(
@@ -69,10 +69,45 @@ public sealed class ClipboardHub : Hub
             Text: publish.Text,
             TextHash: computedHash);
 
-        _state.SetLatest(changed);
+        _state.SetLatest(roomId, changed);
 
-        // Broadcast to all clients (including origin). Clients prevent loops by ignoring originDeviceId == local deviceId.
-        await Clients.All.SendAsync(ClipboardChangedMethod, changed);
+        // Add to per-room history (text only for now).
+        var id = $"{changed.ServerTsUtcMs}_{publish.DeviceId:N}_{ClipboardProtocol.HashToHex(computedHash)}";
+        var preview = publish.Text.Length <= 120 ? publish.Text : publish.Text.Substring(0, 120);
+        var item = new HistoryItem(
+            Id: id,
+            RoomId: roomId,
+            Kind: HistoryItemKind.Text,
+            OriginDeviceId: publish.DeviceId,
+            TsUtcMs: changed.ServerTsUtcMs,
+            Title: preview,
+            Preview: preview,
+            SizeBytes: Encoding.UTF8.GetByteCount(publish.Text),
+            ContentHash: computedHash,
+            ContentType: "text/plain",
+            ProviderFileId: null,
+            ObjectKey: null);
+
+        _history.Append(roomId, item, maxItems: 10);
+        _history.PutTextPayload(roomId, id, publish.Text);
+
+        // Broadcast within room only.
+        await Clients.Group(roomId).SendAsync(ClipboardChangedMethod, changed);
+        await Clients.Group(roomId).SendAsync(HistoryItemAddedMethod, new HistoryItemAdded(item));
+    }
+
+    /// <summary>
+    /// Relay mode: get the full text content for a history item.
+    /// </summary>
+    public Task<GetHistoryTextResponse> GetHistoryText(GetHistoryTextRequest request)
+    {
+        var roomId = GetJoinedRoomIdOrThrow();
+        var itemId = (request?.ItemId ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(itemId)) throw new HubException("itemId is required.");
+
+        var text = _history.GetTextPayload(roomId, itemId);
+        if (text is null) throw new HubException("history item not found.");
+        return Task.FromResult(new GetHistoryTextResponse(itemId, text));
     }
 
     /// <summary>
@@ -98,6 +133,24 @@ public sealed class ClipboardHub : Hub
         {
             await Clients.Caller.SendAsync(ClipboardPointerChangedMethod, new ClipboardPointerChanged(latest));
         }
+
+        // Converge: send latest relay clipboard value for this room to the caller.
+        var latestText = _state.GetLatest(roomId);
+        if (latestText is not null)
+        {
+            await Clients.Caller.SendAsync(ClipboardChangedMethod, latestText);
+        }
+    }
+
+    /// <summary>
+    /// Relay mode: return last N history items for the joined room.
+    /// </summary>
+    public Task<GetHistoryResponse> GetHistory(GetHistoryRequest request)
+    {
+        var roomId = GetJoinedRoomIdOrThrow();
+        var limit = request?.Limit ?? 10;
+        var items = _history.GetHistory(roomId, limit).ToArray();
+        return Task.FromResult(new GetHistoryResponse(new HistoryList(roomId, items)));
     }
 
     /// <summary>
@@ -124,6 +177,53 @@ public sealed class ClipboardHub : Hub
 
         // Broadcast within room only.
         await Clients.Group(roomId).SendAsync(ClipboardPointerChangedMethod, new ClipboardPointerChanged(publish.Pointer));
+    }
+
+    /// <summary>
+    /// Relay mode: publish a file payload into room history (server stores bytes; clients download via /download/{roomId}/{itemId}).
+    /// </summary>
+    public async Task FilePublish(ClipboardFilePublish publish)
+    {
+        if (publish is null) throw new HubException("payload is required.");
+        if (publish.DeviceId == Guid.Empty) throw new HubException("deviceId is required.");
+        if (publish.Bytes is null) throw new HubException("bytes is required.");
+
+        var roomId = GetJoinedRoomIdOrThrow();
+
+        // Hard cap to protect server memory.
+        const int serverMax = 10 * 1024 * 1024;
+        if (publish.Bytes.Length == 0) throw new HubException("bytes must be non-empty.");
+        if (publish.Bytes.Length > serverMax) throw new HubException($"file exceeds max of {serverMax} bytes.");
+
+        var fileName = (publish.FileName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(fileName)) fileName = "file.bin";
+        var contentType = (publish.ContentType ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(contentType)) contentType = "application/octet-stream";
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var hash = SHA256.HashData(publish.Bytes);
+        var id = $"{now}_{publish.DeviceId:N}_{ClipboardProtocol.HashToHex(hash)}";
+
+        // Store payload for HTTP download.
+        _files.Put(roomId, id, publish.Bytes);
+
+        var item = new HistoryItem(
+            Id: id,
+            RoomId: roomId,
+            Kind: HistoryItemKind.File,
+            OriginDeviceId: publish.DeviceId,
+            TsUtcMs: now,
+            Title: fileName,
+            Preview: null,
+            SizeBytes: publish.Bytes.Length,
+            ContentHash: hash,
+            ContentType: contentType,
+            ProviderFileId: null,
+            ObjectKey: null);
+
+        _history.Append(roomId, item, maxItems: 10);
+
+        await Clients.Group(roomId).SendAsync(HistoryItemAddedMethod, new HistoryItemAdded(item));
     }
 
     private byte[] ValidateAndComputeHash(ClipboardPublish publish)

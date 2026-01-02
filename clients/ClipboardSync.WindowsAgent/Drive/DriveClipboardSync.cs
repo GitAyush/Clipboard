@@ -17,6 +17,8 @@ public sealed class DriveClipboardSync : IDisposable
     private readonly LogBuffer _log;
 
     private IDriveClipboardStore? _store;
+    private IDriveManifestStore? _manifestStore;
+    private DriveHistoryManifest? _manifestCache;
     private int _joinedRoom;
 
     public DriveClipboardSync(
@@ -42,10 +44,12 @@ public sealed class DriveClipboardSync : IDisposable
         IClipboardApplier clipboard,
         ClipboardLoopGuard loopGuard,
         LogBuffer log,
-        IDriveClipboardStore store)
+        IDriveClipboardStore store,
+        IDriveManifestStore? manifestStore = null)
         : this(settings, relay, clipboard, loopGuard, log)
     {
         _store = store;
+        _manifestStore = manifestStore;
     }
 
     public void Start()
@@ -73,6 +77,7 @@ public sealed class DriveClipboardSync : IDisposable
 
             var drive = await GoogleDriveAuth.GetDriveServiceAsync(_settings.GoogleClientSecretsPath, tokenDir, CancellationToken.None);
             _store = new DriveClipboardStore(drive);
+            _manifestStore = new DriveManifestStore(drive);
 
             await EnsureJoinedRoomAsync();
 
@@ -100,6 +105,13 @@ public sealed class DriveClipboardSync : IDisposable
 
         await EnsureJoinedRoomAsync();
 
+        var textBytes = System.Text.Encoding.UTF8.GetByteCount(text);
+        if (textBytes > _settings.MaxInlineTextBytes)
+        {
+            _log.Warn($"Local text exceeds MaxInlineTextBytes={_settings.MaxInlineTextBytes} (bytes={textBytes}); skipping inline upload.");
+            return;
+        }
+
         var now = DateTimeOffset.UtcNow;
         var hash = ClipboardProtocol.ComputeTextHashUtf8(text);
 
@@ -124,6 +136,23 @@ public sealed class DriveClipboardSync : IDisposable
 
         await _relay.PublishPointerAsync(new ClipboardPointerPublish(pointer));
         _log.Info($"Pointer published. fileId={fileId} size={sizeBytes}");
+
+        // Maintain shared manifest (best effort; errors should not break clipboard sync).
+        if (_manifestStore is not null)
+        {
+            try
+            {
+                _manifestCache ??= await _manifestStore.LoadAsync(_settings.RoomId, CancellationToken.None);
+                _manifestCache.AppendOrReplaceNewestFirst(
+                    DriveHistoryManifestItem.FromPointer(pointer, HistoryItemKind.Text, title: text.Length <= 120 ? text : text.Substring(0, 120), preview: text.Length <= 120 ? text : text.Substring(0, 120)),
+                    maxItems: 10);
+                await _manifestStore.SaveAsync(_manifestCache, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _log.Warn($"Manifest update failed: {ex.Message}");
+            }
+        }
     }
 
     public async Task OnPointerChangedAsync(ClipboardItemPointer pointer)
@@ -140,6 +169,12 @@ public sealed class DriveClipboardSync : IDisposable
 
             if (!string.Equals(pointer.RoomId, _settings.RoomId, StringComparison.Ordinal))
                 return;
+
+            if (!string.Equals(pointer.ContentType, "text", StringComparison.OrdinalIgnoreCase))
+            {
+                _log.Info($"Pointer contentType={pointer.ContentType}; ignoring (not text).");
+                return;
+            }
 
             if (string.IsNullOrWhiteSpace(pointer.ProviderFileId))
             {

@@ -14,10 +14,12 @@ public sealed class WindowsClipboardPoller : IDisposable, Drive.IClipboardApplie
 
     private readonly DispatcherTimer _timer;
     private string? _lastSeenText;
+    private string? _lastSeenFilesSig;
     private int _consecutiveReadFailures;
     private DateTimeOffset _lastReadFailureLogUtc = DateTimeOffset.MinValue;
 
     public event EventHandler<string>? TextChanged;
+    public event EventHandler<IReadOnlyList<string>>? FilesChanged;
 
     public WindowsClipboardPoller(AppSettingsSnapshot settings, ClipboardLoopGuard loopGuard, LogBuffer log)
     {
@@ -71,6 +73,18 @@ public sealed class WindowsClipboardPoller : IDisposable, Drive.IClipboardApplie
         if (_loopGuard.ShouldIgnoreLocalClipboardEvent(now))
             return;
 
+        var files = TryGetClipboardFileDropListWithRetry(retries: 2, delayMs: 15);
+        if (files is not null && files.Count > 0)
+        {
+            var sig = string.Join("|", files);
+            if (!string.Equals(_lastSeenFilesSig, sig, StringComparison.Ordinal))
+            {
+                _lastSeenFilesSig = sig;
+                FilesChanged?.Invoke(this, files);
+            }
+            return; // Prefer files over text for this tick.
+        }
+
         var text = TryGetClipboardTextWithRetry(retries: 3, delayMs: 15);
         if (text is null) return;
 
@@ -80,6 +94,38 @@ public sealed class WindowsClipboardPoller : IDisposable, Drive.IClipboardApplie
         // Note: debounce/duplicate suppression is applied before publishing (in AgentController).
         _lastSeenText = text;
         TextChanged?.Invoke(this, text);
+    }
+
+    private IReadOnlyList<string>? TryGetClipboardFileDropListWithRetry(int retries, int delayMs)
+    {
+        for (int attempt = 0; attempt <= retries; attempt++)
+        {
+            try
+            {
+                if (!System.Windows.Clipboard.ContainsFileDropList()) return null;
+                var sc = System.Windows.Clipboard.GetFileDropList();
+                _consecutiveReadFailures = 0;
+                return sc.Cast<string>().ToArray();
+            }
+            catch (Exception) when (attempt < retries)
+            {
+                Thread.Sleep(delayMs);
+            }
+            catch (Exception ex)
+            {
+                _consecutiveReadFailures++;
+
+                var nowUtc = DateTimeOffset.UtcNow;
+                if (nowUtc - _lastReadFailureLogUtc > TimeSpan.FromSeconds(5))
+                {
+                    _lastReadFailureLogUtc = nowUtc;
+                    _log.Warn($"Clipboard read failed ({_consecutiveReadFailures}x): {ex.GetType().Name}");
+                }
+                return null;
+            }
+        }
+
+        return null;
     }
 
     private string? TryGetClipboardTextWithRetry(int retries, int delayMs)
