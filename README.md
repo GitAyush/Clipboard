@@ -95,6 +95,56 @@ Recommended 1-PC verification:
 #### Two PCs (true cross-device)
 Run server (one place reachable by both machines), run one agent per machine, then copy on one and paste on the other.
 
+#### Windows Sandbox (true “second Windows” on one physical PC)
+Windows Sandbox is a great way to test with a **separate Windows instance** (separate clipboard, separate processes) while keeping the relay server on your host.
+
+**Important:** Windows Sandbox **can share clipboard** with the host by default. To get a true cross-device style test, use a `.wsb` config that **disables clipboard redirection**.
+
+1) Create a file like `Sandbox-ClipboardSync.wsb` anywhere (e.g. Desktop) with:
+
+```xml
+<Configuration>
+  <ClipboardRedirection>Disable</ClipboardRedirection>
+  <Networking>Enable</Networking>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\Users\agar\Downloads\Clipboard</HostFolder>
+      <SandboxFolder>C:\ClipboardSync</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+</Configuration>
+```
+
+2) Start the relay server on the **host** bound to all interfaces:
+
+```powershell
+dotnet run --project .\server\RelayServer\RelayServer.csproj -- --urls http://0.0.0.0:5104
+```
+
+3) Allow Windows Firewall inbound access for port **5104** (host).
+
+4) Double-click the `.wsb` file to start Sandbox.
+
+5) In Sandbox, open PowerShell and find the host IP:
+- Run `ipconfig`
+- The **Default Gateway** is typically the host/NAT gateway you can reach from Sandbox.
+
+6) In Sandbox PowerShell, verify you can hit the host relay:
+
+```powershell
+Invoke-WebRequest http://<HOST_IP>:5104/ | Select-Object -ExpandProperty Content
+```
+
+7) Run the Windows agent in Sandbox.
+Notes:
+- Sandbox may not have the .NET 8 runtime/SDK. The simplest path is to **publish a self-contained** agent on the host and run the produced `.exe` from the mapped folder.
+- Once the agent is running, open tray **Settings** and set **Server URL** to `http://<HOST_IP>:5104`.
+
+8) Test:
+- Copy text on host → paste in Sandbox (or vice versa).
+- Because clipboard redirection is disabled, these are truly separate clipboards and the relay should sync them.
+
 ### Automated regression tests (recommended)
 
 #### Protocol unit tests (fast)

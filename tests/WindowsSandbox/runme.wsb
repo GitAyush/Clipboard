@@ -1,0 +1,11 @@
+<Configuration>
+  <ClipboardRedirection>Disable</ClipboardRedirection>
+  <Networking>Enable</Networking>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\Users\agar\Downloads\Clipboard</HostFolder>
+      <SandboxFolder>C:\ClipboardSync</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+</Configuration>

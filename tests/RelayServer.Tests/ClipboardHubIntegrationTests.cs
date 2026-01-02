@@ -102,6 +102,72 @@ public sealed class ClipboardHubIntegrationTests
 
         Assert.Equal(text, changed.Text);
     }
+
+    [Fact]
+    public async Task HubConnection_Reconnects_AfterServerRestart()
+    {
+        // This test uses a real Kestrel-hosted RelayServer instance (not TestServer),
+        // so we can simulate a server restart and validate SignalR automatic reconnect.
+
+        var port = TestPort.GetFreeTcpPort();
+        var baseUrl = new Uri($"http://127.0.0.1:{port}");
+        var hubUrl = new Uri(baseUrl, "/hub/clipboard");
+
+        // Start server (Kestrel).
+        var app1 = global::RelayServer.RelayServerApp.Build(Array.Empty<string>());
+        app1.Urls.Clear();
+        app1.Urls.Add(baseUrl.ToString());
+        await app1.StartAsync();
+
+        var reconnecting = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reconnected = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var conn = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o =>
+            {
+                o.Transports = HttpTransportType.LongPolling;
+            })
+            .AddMessagePackProtocol()
+            .WithAutomaticReconnect(new FastRetryPolicy())
+            .Build();
+
+        conn.Reconnecting += _ =>
+        {
+            reconnecting.TrySetResult(null);
+            return Task.CompletedTask;
+        };
+        conn.Reconnected += _ =>
+        {
+            reconnected.TrySetResult(null);
+            return Task.CompletedTask;
+        };
+
+        await conn.StartAsync();
+
+        // Stop server to force disconnect.
+        await app1.StopAsync();
+        await app1.DisposeAsync();
+
+        using var cts1 = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await reconnecting.Task.WaitAsync(cts1.Token);
+
+        // Restart server on same URL/port.
+        var app2 = global::RelayServer.RelayServerApp.Build(Array.Empty<string>());
+        app2.Urls.Clear();
+        app2.Urls.Add(baseUrl.ToString());
+        await app2.StartAsync();
+
+        try
+        {
+            using var cts2 = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            await reconnected.Task.WaitAsync(cts2.Token);
+        }
+        finally
+        {
+            await app2.StopAsync();
+            await app2.DisposeAsync();
+        }
+    }
 }
 
 
