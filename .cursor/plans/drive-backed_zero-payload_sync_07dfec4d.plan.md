@@ -4,15 +4,15 @@ overview: Switch to a design where clipboard payload never transits or is stored
 todos:
   - id: define-pointer-protocol
     content: Add shared MessagePack DTOs for pointer-only notifications (no clipboard payload).
-    status: pending
+    status: completed
   - id: server-pointer-hub
     content: Update RelayServer hub to broadcast pointer messages and support simple per-room grouping (roomId/secret).
-    status: pending
+    status: completed
     dependencies:
       - define-pointer-protocol
   - id: windows-drive-client
     content: Add Google OAuth + Drive upload/download to Windows agent (appDataFolder) and publish pointers to server.
-    status: pending
+    status: in_progress
     dependencies:
       - define-pointer-protocol
       - server-pointer-hub

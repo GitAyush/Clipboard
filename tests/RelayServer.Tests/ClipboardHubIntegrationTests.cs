@@ -168,6 +168,114 @@ public sealed class ClipboardHubIntegrationTests
             await app2.DisposeAsync();
         }
     }
+
+    [Fact]
+    public async Task ClipboardPointerPublish_BroadcastsPointerChanged_WithinRoom()
+    {
+        await using var factory = new RelayServerAppFactory();
+        _ = factory.CreateClient();
+        var hubUrl = new Uri(factory.Server.BaseAddress, "/hub/clipboard");
+
+        const string roomId = "room-test";
+        const string roomSecret = "secret";
+
+        var received = new TaskCompletionSource<ClipboardPointerChanged>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var receiver = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o =>
+            {
+                o.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                o.Transports = HttpTransportType.LongPolling;
+            })
+            .AddMessagePackProtocol()
+            .Build();
+        receiver.On<ClipboardPointerChanged>("ClipboardPointerChanged", msg => received.TrySetResult(msg));
+        await receiver.StartAsync();
+        await receiver.InvokeAsync("JoinRoom", roomId, roomSecret);
+
+        await using var sender = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o =>
+            {
+                o.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                o.Transports = HttpTransportType.LongPolling;
+            })
+            .AddMessagePackProtocol()
+            .Build();
+        await sender.StartAsync();
+        await sender.InvokeAsync("JoinRoom", roomId, roomSecret);
+
+        var p = new ClipboardItemPointer(
+            RoomId: roomId,
+            OriginDeviceId: Guid.NewGuid(),
+            TsUtcMs: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            ObjectKey: "clips/room-test/1.bin",
+            ProviderFileId: "file123",
+            ContentHash: ClipboardProtocol.ComputeTextHashUtf8("hello"),
+            SizeBytes: 5,
+            ContentType: "text");
+
+        await sender.InvokeAsync("ClipboardPointerPublish", new ClipboardPointerPublish(p));
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var changed = await received.Task.WaitAsync(cts.Token);
+
+        Assert.Equal(roomId, changed.Pointer.RoomId);
+        Assert.Equal(p.ObjectKey, changed.Pointer.ObjectKey);
+        Assert.Equal(p.ProviderFileId, changed.Pointer.ProviderFileId);
+        Assert.True(ClipboardProtocol.HashEquals(p.ContentHash, changed.Pointer.ContentHash));
+    }
+
+    [Fact]
+    public async Task JoinRoom_SendsLatestPointer_ToNewJoiner()
+    {
+        await using var factory = new RelayServerAppFactory();
+        _ = factory.CreateClient();
+        var hubUrl = new Uri(factory.Server.BaseAddress, "/hub/clipboard");
+
+        const string roomId = "room-latest";
+        const string roomSecret = "secret";
+
+        // Publisher joins and publishes, establishing "latest" for the room.
+        await using var publisher = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o =>
+            {
+                o.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                o.Transports = HttpTransportType.LongPolling;
+            })
+            .AddMessagePackProtocol()
+            .Build();
+        await publisher.StartAsync();
+        await publisher.InvokeAsync("JoinRoom", roomId, roomSecret);
+
+        var p = new ClipboardItemPointer(
+            RoomId: roomId,
+            OriginDeviceId: Guid.NewGuid(),
+            TsUtcMs: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            ObjectKey: "clips/room-latest/1.bin",
+            ProviderFileId: null,
+            ContentHash: ClipboardProtocol.ComputeTextHashUtf8("latest"),
+            SizeBytes: 6,
+            ContentType: "text");
+        await publisher.InvokeAsync("ClipboardPointerPublish", new ClipboardPointerPublish(p));
+
+        // Late joiner connects, subscribes, then joins; should receive latest pointer on join.
+        var received = new TaskCompletionSource<ClipboardPointerChanged>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var lateJoiner = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o =>
+            {
+                o.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                o.Transports = HttpTransportType.LongPolling;
+            })
+            .AddMessagePackProtocol()
+            .Build();
+        lateJoiner.On<ClipboardPointerChanged>("ClipboardPointerChanged", msg => received.TrySetResult(msg));
+        await lateJoiner.StartAsync();
+        await lateJoiner.InvokeAsync("JoinRoom", roomId, roomSecret);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var changed = await received.Task.WaitAsync(cts.Token);
+        Assert.Equal(p.ObjectKey, changed.Pointer.ObjectKey);
+    }
 }
 
 

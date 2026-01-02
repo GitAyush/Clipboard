@@ -16,6 +16,8 @@ public static class RelayServerApp
         }).AddMessagePackProtocol();
 
         builder.Services.AddSingleton<InMemoryClipboardState>();
+        builder.Services.AddSingleton<InMemoryRoomRegistry>();
+        builder.Services.AddSingleton<InMemoryPointerState>();
 
         var app = builder.Build();
 
