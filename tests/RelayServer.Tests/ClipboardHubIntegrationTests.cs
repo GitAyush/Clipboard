@@ -276,6 +276,69 @@ public sealed class ClipboardHubIntegrationTests
         var changed = await received.Task.WaitAsync(cts.Token);
         Assert.Equal(p.ObjectKey, changed.Pointer.ObjectKey);
     }
+
+    [Fact]
+    public async Task JoinRoom_WithWrongSecret_Throws()
+    {
+        await using var factory = new RelayServerAppFactory();
+        _ = factory.CreateClient();
+        var hubUrl = new Uri(factory.Server.BaseAddress, "/hub/clipboard");
+
+        const string roomId = "room-secret-test";
+
+        await using var c1 = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o =>
+            {
+                o.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                o.Transports = HttpTransportType.LongPolling;
+            })
+            .AddMessagePackProtocol()
+            .Build();
+        await c1.StartAsync();
+        await c1.InvokeAsync("JoinRoom", roomId, "secretA");
+
+        await using var c2 = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o =>
+            {
+                o.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                o.Transports = HttpTransportType.LongPolling;
+            })
+            .AddMessagePackProtocol()
+            .Build();
+        await c2.StartAsync();
+
+        await Assert.ThrowsAsync<HubException>(() => c2.InvokeAsync("JoinRoom", roomId, "secretB"));
+    }
+
+    [Fact]
+    public async Task ClipboardPointerPublish_RequiresJoinRoom()
+    {
+        await using var factory = new RelayServerAppFactory();
+        _ = factory.CreateClient();
+        var hubUrl = new Uri(factory.Server.BaseAddress, "/hub/clipboard");
+
+        await using var sender = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o =>
+            {
+                o.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                o.Transports = HttpTransportType.LongPolling;
+            })
+            .AddMessagePackProtocol()
+            .Build();
+        await sender.StartAsync();
+
+        var p = new ClipboardItemPointer(
+            RoomId: "roomX",
+            OriginDeviceId: Guid.NewGuid(),
+            TsUtcMs: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            ObjectKey: "clips/roomX/1.bin",
+            ProviderFileId: "file123",
+            ContentHash: ClipboardProtocol.ComputeTextHashUtf8("x"),
+            SizeBytes: 1,
+            ContentType: "text");
+
+        await Assert.ThrowsAsync<HubException>(() => sender.InvokeAsync("ClipboardPointerPublish", new ClipboardPointerPublish(p)));
+    }
 }
 
 

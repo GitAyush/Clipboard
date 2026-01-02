@@ -1,4 +1,5 @@
 using System.IO;
+using System.Diagnostics.CodeAnalysis;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Drive.v3;
 using Google.Apis.Services;
@@ -6,6 +7,7 @@ using Google.Apis.Util.Store;
 
 namespace ClipboardSync.WindowsAgent.Drive;
 
+[ExcludeFromCodeCoverage]
 public static class GoogleDriveAuth
 {
     private static readonly string[] Scopes = { DriveService.Scope.DriveAppdata };

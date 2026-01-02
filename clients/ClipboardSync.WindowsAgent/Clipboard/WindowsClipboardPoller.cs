@@ -1,9 +1,11 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Windows;
 using System.Windows.Threading;
 using ClipboardSync.Protocol;
 
 namespace ClipboardSync.WindowsAgent.Clipboard;
 
+[ExcludeFromCodeCoverage]
 public sealed class WindowsClipboardPoller : IDisposable, Drive.IClipboardApplier
 {
     private readonly AppSettingsSnapshot _settings;

@@ -1,7 +1,9 @@
+using System.Diagnostics.CodeAnalysis;
 using ClipboardSync.WindowsAgent.Settings;
 
 namespace ClipboardSync.WindowsAgent;
 
+[ExcludeFromCodeCoverage]
 public sealed class AppHost : IDisposable
 {
     private Tray.TrayIcon? _tray;

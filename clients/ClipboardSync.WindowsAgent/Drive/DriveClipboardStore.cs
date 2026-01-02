@@ -1,4 +1,5 @@
 using System.IO;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Google.Apis.Drive.v3;
 using DriveFile = Google.Apis.Drive.v3.Data.File;
@@ -11,6 +12,7 @@ public interface IDriveClipboardStore
     Task<string> DownloadTextAsync(string fileId, CancellationToken ct);
 }
 
+[ExcludeFromCodeCoverage]
 public sealed class DriveClipboardStore : IDriveClipboardStore
 {
     private readonly DriveService _drive;

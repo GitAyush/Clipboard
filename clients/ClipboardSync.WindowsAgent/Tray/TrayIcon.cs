@@ -1,10 +1,13 @@
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
+using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics;
 using ClipboardSync.WindowsAgent.Settings;
 
 namespace ClipboardSync.WindowsAgent.Tray;
 
+[ExcludeFromCodeCoverage]
 public sealed class TrayIcon : IDisposable
 {
     private readonly SettingsStore _store;
@@ -87,6 +90,10 @@ public sealed class TrayIcon : IDisposable
         logItem.Click += (_, _) => ShowLog();
         menu.Items.Add(logItem);
 
+        var restartItem = new ToolStripMenuItem("Restart");
+        restartItem.Click += (_, _) => RestartSelf();
+        menu.Items.Add(restartItem);
+
         menu.Items.Add(new ToolStripSeparator());
 
         var exitItem = new ToolStripMenuItem("Exit");
@@ -94,6 +101,20 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(exitItem);
 
         return menu;
+    }
+
+    private static void RestartSelf()
+    {
+        try
+        {
+            var psi = RestartHelper.CreateRestartStartInfo();
+            Process.Start(psi);
+            System.Windows.Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"Restart failed: {ex.Message}", "ClipboardSync");
+        }
     }
 
     private void OnStatusChanged(string status)

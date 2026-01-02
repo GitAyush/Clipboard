@@ -1,8 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Windows;
 
 namespace ClipboardSync.WindowsAgent;
 
+[ExcludeFromCodeCoverage]
 public sealed partial class LogWindow : Window
 {
     private readonly LogBuffer _log;

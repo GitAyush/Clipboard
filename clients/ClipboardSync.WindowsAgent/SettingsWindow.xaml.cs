@@ -1,8 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Windows;
 using ClipboardSync.WindowsAgent.Settings;
 
 namespace ClipboardSync.WindowsAgent;
 
+[ExcludeFromCodeCoverage]
 public sealed partial class SettingsWindow : Window
 {
     private readonly SettingsStore _store;

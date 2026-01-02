@@ -10,10 +10,12 @@ public sealed class SettingsStore
     private readonly string _dir;
     private readonly string _path;
 
-    public SettingsStore(string? profileName)
+    public SettingsStore(string? profileName, string? baseDirectory = null)
     {
         _profile = string.IsNullOrWhiteSpace(profileName) ? "default" : Sanitize(profileName);
-        _dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClipboardSync");
+        _dir = string.IsNullOrWhiteSpace(baseDirectory)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClipboardSync")
+            : baseDirectory;
         _path = Path.Combine(_dir, $"settings.{_profile}.json");
     }
 

@@ -116,6 +116,82 @@ public sealed class DriveClipboardSyncTests
         Assert.Null(clipboard.LastAppliedText);
     }
 
+    [Fact]
+    public async Task OnPointerChanged_IgnoresWrongRoom()
+    {
+        var settings = new AppSettingsSnapshot(
+            DeviceId: Guid.NewGuid(),
+            DeviceName: "dev",
+            ServerBaseUrl: "http://localhost:5104",
+            SyncMode: "Drive",
+            RoomId: "room1",
+            RoomSecret: "secret",
+            GoogleClientSecretsPath: "ignored");
+
+        var relay = new FakeRelay();
+        var clipboard = new FakeClipboard();
+        var guard = new ClipboardLoopGuard(localDebounceWindow: TimeSpan.FromMilliseconds(0));
+        var log = new LogBuffer();
+
+        var store = new FakeDriveStore();
+
+        var sync = new DriveClipboardSync(settings, relay, clipboard, guard, log, store);
+        sync.Start();
+
+        var pointer = new ClipboardItemPointer(
+            RoomId: "room2",
+            OriginDeviceId: Guid.NewGuid(),
+            TsUtcMs: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            ObjectKey: "clips/room2/x.txt",
+            ProviderFileId: "file123",
+            ContentHash: ClipboardProtocol.ComputeTextHashUtf8("x"),
+            SizeBytes: 1,
+            ContentType: "text");
+
+        await sync.OnPointerChangedAsync(pointer);
+
+        Assert.Equal(0, store.DownloadCalls);
+        Assert.Null(clipboard.LastAppliedText);
+    }
+
+    [Fact]
+    public async Task OnPointerChanged_IgnoresWhenMissingFileId()
+    {
+        var settings = new AppSettingsSnapshot(
+            DeviceId: Guid.NewGuid(),
+            DeviceName: "dev",
+            ServerBaseUrl: "http://localhost:5104",
+            SyncMode: "Drive",
+            RoomId: "room1",
+            RoomSecret: "secret",
+            GoogleClientSecretsPath: "ignored");
+
+        var relay = new FakeRelay();
+        var clipboard = new FakeClipboard();
+        var guard = new ClipboardLoopGuard(localDebounceWindow: TimeSpan.FromMilliseconds(0));
+        var log = new LogBuffer();
+
+        var store = new FakeDriveStore();
+
+        var sync = new DriveClipboardSync(settings, relay, clipboard, guard, log, store);
+        sync.Start();
+
+        var pointer = new ClipboardItemPointer(
+            RoomId: "room1",
+            OriginDeviceId: Guid.NewGuid(),
+            TsUtcMs: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            ObjectKey: "clips/room1/x.txt",
+            ProviderFileId: null,
+            ContentHash: ClipboardProtocol.ComputeTextHashUtf8("x"),
+            SizeBytes: 1,
+            ContentType: "text");
+
+        await sync.OnPointerChangedAsync(pointer);
+
+        Assert.Equal(0, store.DownloadCalls);
+        Assert.Null(clipboard.LastAppliedText);
+    }
+
     private sealed class FakeRelay : IRelayPointerTransport
     {
         public int JoinCalls { get; private set; }

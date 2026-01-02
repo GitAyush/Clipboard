@@ -1,9 +1,11 @@
 using ClipboardSync.Protocol;
 using ClipboardSync.WindowsAgent.Clipboard;
 using ClipboardSync.WindowsAgent.Sync;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ClipboardSync.WindowsAgent;
 
+[ExcludeFromCodeCoverage]
 public sealed class AgentController : IDisposable
 {
     private readonly object _gate = new();

@@ -1,5 +1,8 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace ClipboardSync.WindowsAgent;
 
+[ExcludeFromCodeCoverage]
 public sealed partial class App : System.Windows.Application
 {
     private AppHost? _host;

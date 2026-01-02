@@ -39,6 +39,7 @@ TestResults/
 **/*.coveragexml
 coverage/
 coverage.*.xml
+coverage-report/
 
 # Publish output
 **/publish/
@@ -70,3 +71,4 @@ $RECYCLE.BIN/
 *.swo
 
 *.pdf
+client_secret*
