@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClipboardSync.Protocol.Test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelayServer.Tests", "tests\RelayServer.Tests\RelayServer.Tests.csproj", "{2D9414E8-157A-451B-B94C-23A75B58D537}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClipboardSync.WindowsAgent.Tests", "tests\ClipboardSync.WindowsAgent.Tests\ClipboardSync.WindowsAgent.Tests.csproj", "{F848309E-E723-465F-A745-9D044823BCAF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -50,6 +52,10 @@ Global
 		{2D9414E8-157A-451B-B94C-23A75B58D537}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2D9414E8-157A-451B-B94C-23A75B58D537}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2D9414E8-157A-451B-B94C-23A75B58D537}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F848309E-E723-465F-A745-9D044823BCAF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F848309E-E723-465F-A745-9D044823BCAF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F848309E-E723-465F-A745-9D044823BCAF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F848309E-E723-465F-A745-9D044823BCAF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{C86D61B1-39FD-454C-9114-E42639AAC4EA} = {41776141-E852-44CC-8DB0-86C430202575}
@@ -57,5 +63,6 @@ Global
 		{B9A1AF72-F718-49D8-BA2E-156FC077C48F} = {B4E9B726-D348-4A9F-A5C9-90A90319923D}
 		{930CA234-63D6-4CC8-B9CD-D0778FEE3819} = {FDACF46F-EA6D-46B4-952A-0AB00600E3E3}
 		{2D9414E8-157A-451B-B94C-23A75B58D537} = {FDACF46F-EA6D-46B4-952A-0AB00600E3E3}
+		{F848309E-E723-465F-A745-9D044823BCAF} = {FDACF46F-EA6D-46B4-952A-0AB00600E3E3}
 	EndGlobalSection
 EndGlobal

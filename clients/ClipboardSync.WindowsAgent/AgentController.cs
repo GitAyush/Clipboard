@@ -16,6 +16,7 @@ public sealed class AgentController : IDisposable
 
     private RelayConnection? _relay;
     private WindowsClipboardPoller? _poller;
+    private Drive.DriveClipboardSync? _driveSync;
 
     public event Action<string>? StatusChanged;
 
@@ -43,6 +44,7 @@ public sealed class AgentController : IDisposable
             _poller ??= new WindowsClipboardPoller(_settings, _loopGuard, _log);
 
             _relay.ClipboardChanged += OnRemoteClipboardChanged;
+            _relay.ClipboardPointerChanged += OnRemotePointerChanged;
             _relay.StatusChanged += OnRelayStatusChanged;
             _poller.TextChanged += OnLocalClipboardTextChanged;
 
@@ -51,6 +53,12 @@ public sealed class AgentController : IDisposable
 
             // Apply persisted preference after boot.
             SetPublishEnabled(_publishEnabledInitial);
+
+            if (_settings.IsDriveMode)
+            {
+                _driveSync ??= new Drive.DriveClipboardSync(_settings, _relay, _poller, _loopGuard, _log);
+                _driveSync.Start();
+            }
         }
     }
 
@@ -63,6 +71,12 @@ public sealed class AgentController : IDisposable
         {
             if (!PublishEnabled)
                 return;
+
+            if (_settings.IsDriveMode)
+            {
+                await (_driveSync?.OnLocalTextChangedAsync(text) ?? Task.CompletedTask);
+                return;
+            }
 
             var now = DateTimeOffset.UtcNow;
             var hash = ClipboardProtocol.ComputeTextHashUtf8(text);
@@ -89,6 +103,9 @@ public sealed class AgentController : IDisposable
     {
         try
         {
+            if (_settings.IsDriveMode)
+                return; // Drive mode ignores payload events.
+
             if (ClipboardLoopGuard.ShouldIgnoreRemote(_settings.DeviceId, changed.OriginDeviceId))
             {
                 _log.Info("Received remote event from self; ignoring.");
@@ -104,6 +121,12 @@ public sealed class AgentController : IDisposable
         }
     }
 
+    private void OnRemotePointerChanged(ClipboardPointerChanged changed)
+    {
+        if (!_settings.IsDriveMode) return;
+        _ = _driveSync?.OnPointerChangedAsync(changed.Pointer);
+    }
+
     private void OnRelayStatusChanged(string status)
     {
         StatusChanged?.Invoke(status);
@@ -116,6 +139,7 @@ public sealed class AgentController : IDisposable
             if (_relay is not null)
             {
                 _relay.ClipboardChanged -= OnRemoteClipboardChanged;
+                _relay.ClipboardPointerChanged -= OnRemotePointerChanged;
                 _relay.StatusChanged -= OnRelayStatusChanged;
                 _relay.Dispose();
                 _relay = null;
@@ -127,14 +151,33 @@ public sealed class AgentController : IDisposable
                 _poller.Dispose();
                 _poller = null;
             }
+
+            _driveSync?.Dispose();
+            _driveSync = null;
         }
     }
 }
 
-public readonly record struct AppSettingsSnapshot(Guid DeviceId, string DeviceName, string ServerBaseUrl)
+public readonly record struct AppSettingsSnapshot(
+    Guid DeviceId,
+    string DeviceName,
+    string ServerBaseUrl,
+    string SyncMode,
+    string RoomId,
+    string RoomSecret,
+    string GoogleClientSecretsPath)
 {
     public AppSettingsSnapshot(Settings.AppSettings s)
-        : this(s.DeviceId, s.DeviceName, s.ServerBaseUrl) { }
+        : this(
+            s.DeviceId,
+            s.DeviceName,
+            s.ServerBaseUrl,
+            s.SyncMode ?? "Relay",
+            s.RoomId ?? "default",
+            s.RoomSecret ?? "",
+            s.GoogleClientSecretsPath ?? "") { }
+
+    public bool IsDriveMode => string.Equals(SyncMode, "Drive", StringComparison.OrdinalIgnoreCase);
 }
 
 

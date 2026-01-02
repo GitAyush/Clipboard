@@ -4,7 +4,7 @@ using ClipboardSync.Protocol;
 
 namespace ClipboardSync.WindowsAgent.Clipboard;
 
-public sealed class WindowsClipboardPoller : IDisposable
+public sealed class WindowsClipboardPoller : IDisposable, Drive.IClipboardApplier
 {
     private readonly AppSettingsSnapshot _settings;
     private readonly ClipboardLoopGuard _loopGuard;

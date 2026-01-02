@@ -5,9 +5,13 @@ using Microsoft.Extensions.DependencyInjection;
 namespace ClipboardSync.WindowsAgent.Sync;
 
 public sealed class RelayConnection : IDisposable
+    , Drive.IRelayPointerTransport
 {
     private const string ClipboardChangedMethod = "ClipboardChanged";
     private const string ClipboardPublishMethod = "ClipboardPublish";
+    private const string ClipboardPointerChangedMethod = "ClipboardPointerChanged";
+    private const string JoinRoomMethod = "JoinRoom";
+    private const string ClipboardPointerPublishMethod = "ClipboardPointerPublish";
 
     private readonly AppSettingsSnapshot _settings;
     private readonly LogBuffer _log;
@@ -16,6 +20,7 @@ public sealed class RelayConnection : IDisposable
     private HubConnection? _connection;
 
     public event Action<ClipboardChanged>? ClipboardChanged;
+    public event Action<ClipboardPointerChanged>? ClipboardPointerChanged;
     public event Action<string>? StatusChanged;
 
     public RelayConnection(AppSettingsSnapshot settings, LogBuffer log)
@@ -45,6 +50,12 @@ public sealed class RelayConnection : IDisposable
             {
                 _log.Info($"Received ClipboardChanged origin={changed.OriginDeviceId} textLen={changed.Text?.Length ?? 0} hash={ClipboardProtocol.HashToHex(changed.TextHash)}");
                 ClipboardChanged?.Invoke(changed);
+            });
+
+            conn.On<ClipboardPointerChanged>(ClipboardPointerChangedMethod, changed =>
+            {
+                _log.Info($"Received ClipboardPointerChanged roomId={changed.Pointer.RoomId} origin={changed.Pointer.OriginDeviceId} key={changed.Pointer.ObjectKey}");
+                ClipboardPointerChanged?.Invoke(changed);
             });
 
             conn.Reconnecting += error =>
@@ -111,6 +122,28 @@ public sealed class RelayConnection : IDisposable
             return Task.CompletedTask;
 
         return conn.InvokeAsync(ClipboardPublishMethod, publish);
+    }
+
+    public Task JoinRoomAsync(string roomId, string roomSecret)
+    {
+        HubConnection? conn;
+        lock (_gate) conn = _connection;
+
+        if (conn is null || conn.State != HubConnectionState.Connected)
+            return Task.CompletedTask;
+
+        return conn.InvokeAsync(JoinRoomMethod, roomId, roomSecret);
+    }
+
+    public Task PublishPointerAsync(ClipboardPointerPublish publish)
+    {
+        HubConnection? conn;
+        lock (_gate) conn = _connection;
+
+        if (conn is null || conn.State != HubConnectionState.Connected)
+            return Task.CompletedTask;
+
+        return conn.InvokeAsync(ClipboardPointerPublishMethod, publish);
     }
 
     private static string BuildHubUrl(string serverBaseUrl)

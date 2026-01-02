@@ -12,13 +12,13 @@ todos:
       - define-pointer-protocol
   - id: windows-drive-client
     content: Add Google OAuth + Drive upload/download to Windows agent (appDataFolder) and publish pointers to server.
-    status: in_progress
+    status: completed
     dependencies:
       - define-pointer-protocol
       - server-pointer-hub
   - id: sandbox-e2e
     content: Document and validate host↔WindowsSandbox E2E flow for pointer-based sync (server on host, agent in sandbox).
-    status: pending
+    status: completed
     dependencies:
       - windows-drive-client
   - id: optional-encryption

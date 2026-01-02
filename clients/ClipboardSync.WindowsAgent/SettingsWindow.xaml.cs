@@ -17,6 +17,14 @@ public sealed partial class SettingsWindow : Window
         ServerUrlText.Text = _settings.ServerBaseUrl;
         DeviceNameText.Text = _settings.DeviceName;
         DeviceIdText.Text = _settings.DeviceId.ToString();
+        RoomIdText.Text = _settings.RoomId;
+        RoomSecretText.Text = _settings.RoomSecret;
+        GoogleSecretsPathText.Text = _settings.GoogleClientSecretsPath;
+
+        // SyncModeCombo selection
+        var mode = (_settings.SyncMode ?? "Relay").Trim();
+        SyncModeCombo.SelectedIndex = string.Equals(mode, "Drive", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+
         PublishEnabledCheck.IsChecked = _settings.PublishLocalClipboard;
     }
 
@@ -35,6 +43,14 @@ public sealed partial class SettingsWindow : Window
         {
             _settings.DeviceName = Environment.MachineName;
         }
+
+        _settings.SyncMode = ((SyncModeCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Content?.ToString() ?? "Relay").Trim();
+        _settings.RoomId = (RoomIdText.Text ?? "").Trim();
+        _settings.RoomSecret = (RoomSecretText.Text ?? "").Trim();
+        _settings.GoogleClientSecretsPath = (GoogleSecretsPathText.Text ?? "").Trim();
+
+        if (string.IsNullOrWhiteSpace(_settings.RoomId)) _settings.RoomId = "default";
+        if (string.IsNullOrWhiteSpace(_settings.SyncMode)) _settings.SyncMode = "Relay";
 
         _settings.PublishLocalClipboard = PublishEnabledCheck.IsChecked == true;
         _store.Save(_settings);
