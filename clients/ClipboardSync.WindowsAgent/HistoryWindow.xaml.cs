@@ -18,6 +18,23 @@ public partial class HistoryWindow : Window
         _controller = controller;
         HistoryGrid.ItemsSource = _items;
 
+        // Show last-known items immediately (Drive manifest fetch can be slow).
+        try
+        {
+            var cached = _controller.GetHistoryCacheSnapshot(25);
+            if (cached.Length > 0)
+            {
+                _items.Clear();
+                foreach (var it in cached)
+                    _items.Add(it);
+                StatusText.Text = $"Loaded {_items.Count} cached item(s)";
+            }
+        }
+        catch
+        {
+            // best-effort only
+        }
+
         Closing += (_, e) =>
         {
             if (AppExitState.IsExiting) return;

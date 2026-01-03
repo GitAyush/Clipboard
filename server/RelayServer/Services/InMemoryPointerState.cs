@@ -20,6 +20,12 @@ public sealed class InMemoryPointerState
     {
         _latestByRoom[pointer.RoomId] = pointer;
     }
+
+    public void SetLatest(string roomKey, ClipboardItemPointer pointer)
+    {
+        if (string.IsNullOrWhiteSpace(roomKey)) throw new ArgumentException("roomKey is required.", nameof(roomKey));
+        _latestByRoom[roomKey] = pointer;
+    }
 }
 
 

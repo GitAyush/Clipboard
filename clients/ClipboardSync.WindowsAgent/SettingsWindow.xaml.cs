@@ -29,6 +29,7 @@ public sealed partial class SettingsWindow : Window
         RoomIdText.Text = _settings.RoomId;
         RoomSecretText.Text = _settings.RoomSecret;
         GoogleSecretsPathText.Text = _settings.GoogleClientSecretsPath;
+        UseGoogleAuthCheck.IsChecked = _settings.UseGoogleAccountAuth;
 
         // SyncModeCombo selection
         var mode = (_settings.SyncMode ?? "Relay").Trim();
@@ -41,6 +42,23 @@ public sealed partial class SettingsWindow : Window
         MaxUploadMbText.Text = Math.Max(1, _settings.MaxUploadBytes / (1024 * 1024)).ToString();
 
         PublishEnabledCheck.IsChecked = _settings.PublishLocalClipboard;
+        ApplyGoogleAuthUiState();
+    }
+
+    private void UseGoogleAuthCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        ApplyGoogleAuthUiState();
+    }
+
+    private void ApplyGoogleAuthUiState()
+    {
+        var useGoogle = UseGoogleAuthCheck.IsChecked == true;
+
+        // When Google auth is used, we ignore these fields at runtime.
+        // Disabling them prevents confusion about what the agent will actually use.
+        RoomIdText.IsEnabled = !useGoogle;
+        RoomSecretText.IsEnabled = !useGoogle;
+        GoogleSecretsPathText.IsEnabled = !useGoogle;
     }
 
     private void SaveButton_Click(object sender, RoutedEventArgs e)
@@ -63,9 +81,13 @@ public sealed partial class SettingsWindow : Window
         _settings.RoomId = (RoomIdText.Text ?? "").Trim();
         _settings.RoomSecret = (RoomSecretText.Text ?? "").Trim();
         _settings.GoogleClientSecretsPath = (GoogleSecretsPathText.Text ?? "").Trim();
+        _settings.UseGoogleAccountAuth = UseGoogleAuthCheck.IsChecked == true;
 
         if (string.IsNullOrWhiteSpace(_settings.RoomId)) _settings.RoomId = "default";
         if (string.IsNullOrWhiteSpace(_settings.SyncMode)) _settings.SyncMode = "Relay";
+
+        // Drive mode needs Google OAuth. The app can use a bundled client_secret*.json next to the exe,
+        // or you can override by providing a path here. So we do NOT hard-block empty path anymore.
 
         // Limits
         var maxInline = MaxInlineTextCombo.SelectedIndex == 1 ? 256 * 1024 : 64 * 1024;

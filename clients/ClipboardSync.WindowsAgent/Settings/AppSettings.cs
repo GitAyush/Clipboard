@@ -8,6 +8,13 @@ public sealed class AppSettings
     public bool PublishLocalClipboard { get; set; } = true;
 
     /// <summary>
+    /// When enabled, the agent will authenticate to RelayServer using the same Google account used for Drive mode.
+    /// This allows devices logged into the same Google account to share clipboard sync without sharing a room secret.
+    /// For local testing, you can keep this OFF and use the roomId+roomSecret flow.
+    /// </summary>
+    public bool UseGoogleAccountAuth { get; set; } = false;
+
+    /// <summary>
     /// Max UTF-8 bytes allowed for inline text sync (default 64KB, optional 256KB).
     /// Text larger than this should use the "upload as file" flow (Drive mode / future).
     /// </summary>

@@ -19,6 +19,9 @@ public sealed class TrayIcon : IDisposable
     private LogWindow? _logWindow;
     private HistoryWindow? _historyWindow;
     private ToolStripMenuItem? _connectionStatusItem;
+    private ToolStripMenuItem? _modeItem;
+    private ToolStripMenuItem? _authItem;
+    private ToolStripMenuItem? _serverAuthItem;
     private ToolStripMenuItem? _publishEnabledItem;
     private ToolStripMenuItem? _recentMenu;
 
@@ -43,6 +46,9 @@ public sealed class TrayIcon : IDisposable
 
         _controller.StatusChanged += OnStatusChanged;
         OnStatusChanged("Starting");
+
+        // Best-effort: show whether server auth is enabled (useful for Google sign-in mode).
+        _ = RefreshServerAuthStatusAsync();
     }
 
     private ContextMenuStrip BuildMenu()
@@ -54,6 +60,15 @@ public sealed class TrayIcon : IDisposable
             Enabled = false
         };
         menu.Items.Add(_connectionStatusItem);
+
+        _modeItem = new ToolStripMenuItem("Mode: (loading...)") { Enabled = false };
+        menu.Items.Add(_modeItem);
+
+        _authItem = new ToolStripMenuItem("Auth: (loading...)") { Enabled = false };
+        menu.Items.Add(_authItem);
+
+        _serverAuthItem = new ToolStripMenuItem("Server auth: (unknown)") { Enabled = false };
+        menu.Items.Add(_serverAuthItem);
 
         var statusItem = new ToolStripMenuItem($"Profile: {Path.GetFileName(_store.SettingsPath)}")
         {
@@ -108,6 +123,10 @@ public sealed class TrayIcon : IDisposable
         restartItem.Click += (_, _) => RestartSelf();
         menu.Items.Add(restartItem);
 
+        var googleItem = new ToolStripMenuItem("Google: sign out / switch account");
+        googleItem.Click += (_, _) => SignOutGoogleAndRestart();
+        menu.Items.Add(googleItem);
+
         menu.Items.Add(new ToolStripSeparator());
 
         var exitItem = new ToolStripMenuItem("Exit");
@@ -146,12 +165,65 @@ public sealed class TrayIcon : IDisposable
                     _connectionStatusItem.Text = $"Status: {status}";
                 if (_icon is not null)
                     _icon.Text = $"ClipboardSync ({status})";
+
+                // Make auth/mode visible without having to read logs.
+                if (_modeItem is not null)
+                    _modeItem.Text = $"Mode: {_settings.SyncMode} (storage: {(_settings.SyncMode?.Equals("Drive", StringComparison.OrdinalIgnoreCase) == true ? "Google Drive" : "Relay server")})";
+
+                if (_authItem is not null)
+                {
+                    var authMode = _settings.UseGoogleAccountAuth ? "Google sign-in" : "Room-based";
+                    _authItem.Text = $"Auth: {authMode}";
+                }
             });
         }
         catch
         {
             // ignore shutdown races
         }
+    }
+
+    private async Task RefreshServerAuthStatusAsync()
+    {
+        try
+        {
+            var s = await ClipboardSync.WindowsAgent.Auth.GoogleServerAuth.GetServerAuthStatusAsync(_settings.ServerBaseUrl, CancellationToken.None);
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (_serverAuthItem is null) return;
+                _serverAuthItem.Text = $"Server auth: {(s.Enabled ? "Enabled" : "Disabled")}";
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (_serverAuthItem is null) return;
+                _serverAuthItem.Text = $"Server auth: (error: {ex.Message})";
+            });
+        }
+    }
+
+    private void SignOutGoogleAndRestart()
+    {
+        try
+        {
+            var tokenScope = _settings.UseGoogleAccountAuth ? "google" : _settings.RoomId;
+            var tokenDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "ClipboardSync",
+                "googleTokens",
+                tokenScope);
+
+            if (Directory.Exists(tokenDir))
+                Directory.Delete(tokenDir, recursive: true);
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"Google sign-out failed: {ex.Message}", "ClipboardSync");
+        }
+
+        RestartSelf();
     }
 
     private void ShowSettings()
@@ -190,9 +262,31 @@ public sealed class TrayIcon : IDisposable
 
         try
         {
-            // Show something immediately; we'll replace after async load.
-            _recentMenu.DropDownItems.Clear();
-            _recentMenu.DropDownItems.Add(new ToolStripMenuItem("(loading...)") { Enabled = false });
+            // Show cached items immediately (Drive mode can be slow to fetch manifest).
+            var cached = _controller.GetHistoryCacheSnapshot(5);
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                _recentMenu.DropDownItems.Clear();
+                if (cached.Length == 0)
+                {
+                    _recentMenu.DropDownItems.Add(new ToolStripMenuItem("(loading...)") { Enabled = false });
+                    return;
+                }
+
+                foreach (var it in cached)
+                {
+                    var label = it.Title;
+                    if (string.IsNullOrWhiteSpace(label)) label = it.Id;
+                    if (label.Length > 70) label = label.Substring(0, 70) + "...";
+
+                    var mi = new ToolStripMenuItem(label)
+                    {
+                        Enabled = it.Kind == ClipboardSync.Protocol.HistoryItemKind.Text
+                    };
+                    mi.Click += async (_, _) => await _controller.CopyHistoryItemToClipboardAsync(it);
+                    _recentMenu.DropDownItems.Add(mi);
+                }
+            });
 
             var items = await _controller.GetRemoteHistoryAsync(5);
 

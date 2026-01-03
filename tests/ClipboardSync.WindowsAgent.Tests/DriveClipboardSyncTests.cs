@@ -18,6 +18,7 @@ public sealed class DriveClipboardSyncTests
             RoomId: "room1",
             RoomSecret: "secret",
             GoogleClientSecretsPath: "ignored",
+            UseGoogleAccountAuth: false,
             MaxInlineTextBytes: 64 * 1024,
             MaxUploadBytes: 1 * 1024 * 1024);
 
@@ -42,6 +43,55 @@ public sealed class DriveClipboardSyncTests
     }
 
     [Fact]
+    public async Task OnLocalTextChanged_WhenGoogleAuthEnabled_UsesDefaultRoomIdForPointer()
+    {
+        var settings = new AppSettingsSnapshot(
+            DeviceId: Guid.NewGuid(),
+            DeviceName: "dev",
+            ServerBaseUrl: "http://localhost:5104",
+            SyncMode: "Drive",
+            RoomId: "room1",          // should be ignored
+            RoomSecret: "secret",     // should be ignored
+            GoogleClientSecretsPath: "ignored",
+            UseGoogleAccountAuth: true,
+            MaxInlineTextBytes: 64 * 1024,
+            MaxUploadBytes: 1 * 1024 * 1024);
+
+        var relay = new FakeRelay();
+        var clipboard = new FakeClipboard();
+        var guard = new ClipboardLoopGuard(localDebounceWindow: TimeSpan.FromMilliseconds(0));
+        var log = new LogBuffer();
+
+        var store = new FakeDriveStore();
+
+        var sync = new DriveClipboardSync(settings, relay, clipboard, guard, log, store);
+        sync.Start();
+
+        await sync.OnLocalTextChangedAsync("hello");
+
+        Assert.NotNull(relay.LastPointer);
+        Assert.Equal("default", relay.LastPointer!.Pointer.RoomId);
+    }
+
+    [Fact]
+    public void AgentController_EffectiveRoomId_WhenGoogleAuthEnabled_IsDefault()
+    {
+        var settings = new AppSettingsSnapshot(
+            DeviceId: Guid.NewGuid(),
+            DeviceName: "dev",
+            ServerBaseUrl: "http://localhost:5104",
+            SyncMode: "Drive",
+            RoomId: "room1",
+            RoomSecret: "secret",
+            GoogleClientSecretsPath: "ignored",
+            UseGoogleAccountAuth: true,
+            MaxInlineTextBytes: 64 * 1024,
+            MaxUploadBytes: 1 * 1024 * 1024);
+
+        Assert.Equal("default", AgentController.EffectiveRoomId(settings));
+    }
+
+    [Fact]
     public async Task OnPointerChanged_DownloadsAndApplies_WhenNotSelf()
     {
         var settings = new AppSettingsSnapshot(
@@ -52,6 +102,7 @@ public sealed class DriveClipboardSyncTests
             RoomId: "room1",
             RoomSecret: "secret",
             GoogleClientSecretsPath: "ignored",
+            UseGoogleAccountAuth: false,
             MaxInlineTextBytes: 64 * 1024,
             MaxUploadBytes: 1 * 1024 * 1024);
 
@@ -94,6 +145,7 @@ public sealed class DriveClipboardSyncTests
             RoomId: "room1",
             RoomSecret: "secret",
             GoogleClientSecretsPath: "ignored",
+            UseGoogleAccountAuth: false,
             MaxInlineTextBytes: 64 * 1024,
             MaxUploadBytes: 1 * 1024 * 1024);
 
@@ -134,6 +186,7 @@ public sealed class DriveClipboardSyncTests
             RoomId: "room1",
             RoomSecret: "secret",
             GoogleClientSecretsPath: "ignored",
+            UseGoogleAccountAuth: false,
             MaxInlineTextBytes: 64 * 1024,
             MaxUploadBytes: 1 * 1024 * 1024);
 
@@ -174,6 +227,7 @@ public sealed class DriveClipboardSyncTests
             RoomId: "room1",
             RoomSecret: "secret",
             GoogleClientSecretsPath: "ignored",
+            UseGoogleAccountAuth: false,
             MaxInlineTextBytes: 64 * 1024,
             MaxUploadBytes: 1 * 1024 * 1024);
 

@@ -22,6 +22,7 @@ public sealed class RelayConnection : IDisposable
 
     private readonly object _gate = new();
     private HubConnection? _connection;
+    private string? _accessToken;
 
     public event Action<ClipboardChanged>? ClipboardChanged;
     public event Action<ClipboardPointerChanged>? ClipboardPointerChanged;
@@ -32,6 +33,14 @@ public sealed class RelayConnection : IDisposable
     {
         _settings = settings;
         _log = log;
+    }
+
+    /// <summary>
+    /// Set (or clear) the RelayServer JWT used for authenticating the SignalR connection.
+    /// </summary>
+    public void SetBearerToken(string? token)
+    {
+        lock (_gate) _accessToken = string.IsNullOrWhiteSpace(token) ? null : token;
     }
 
     public async Task ConnectAsync()
@@ -46,7 +55,13 @@ public sealed class RelayConnection : IDisposable
             var hubUrl = BuildHubUrl(_settings.ServerBaseUrl);
 
             conn = new HubConnectionBuilder()
-                .WithUrl(hubUrl)
+                .WithUrl(hubUrl, o =>
+                {
+                    o.AccessTokenProvider = () =>
+                    {
+                        lock (_gate) return Task.FromResult(_accessToken);
+                    };
+                })
                 .AddMessagePackProtocol()
                 .WithAutomaticReconnect()
                 .Build();
@@ -198,6 +213,22 @@ public sealed class RelayConnection : IDisposable
 
     private async Task TryJoinRoomAsync(HubConnection conn)
     {
+        // In Google-auth mode, ignore any configured room info and always join the default room.
+        if (_settings.UseGoogleAccountAuth)
+        {
+            if (conn.State != HubConnectionState.Connected) return;
+            try
+            {
+                await conn.InvokeAsync(JoinRoomMethod, "default", "");
+                _log.Info("Joined room. roomId=default (google auth mode)");
+            }
+            catch (Exception ex)
+            {
+                _log.Warn($"JoinRoom failed: {ex.Message}");
+            }
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(_settings.RoomId) || string.IsNullOrWhiteSpace(_settings.RoomSecret))
             return;
         if (conn.State != HubConnectionState.Connected)

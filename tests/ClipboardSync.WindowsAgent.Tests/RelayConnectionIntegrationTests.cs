@@ -47,6 +47,7 @@ public sealed class RelayConnectionIntegrationTests
                 RoomId: roomId,
                 RoomSecret: roomSecret,
                 GoogleClientSecretsPath: "",
+                UseGoogleAccountAuth: false,
                 MaxInlineTextBytes: 64 * 1024,
                 MaxUploadBytes: 1 * 1024 * 1024);
 

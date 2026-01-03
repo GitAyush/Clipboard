@@ -21,6 +21,8 @@ public sealed class DriveClipboardSync : IDisposable
     private DriveHistoryManifest? _manifestCache;
     private int _joinedRoom;
 
+    private string EffectiveRoomId => _settings.UseGoogleAccountAuth ? "default" : _settings.RoomId;
+
     public DriveClipboardSync(
         AppSettingsSnapshot settings,
         IRelayPointerTransport relay,
@@ -92,8 +94,17 @@ public sealed class DriveClipboardSync : IDisposable
     private async Task EnsureJoinedRoomAsync()
     {
         if (Volatile.Read(ref _joinedRoom) == 1) return;
+
+        if (_settings.UseGoogleAccountAuth)
+        {
+            // In Google auth mode, ignore any configured room info and always join the default room.
+            await _relay.JoinRoomAsync("default", "");
+            Volatile.Write(ref _joinedRoom, 1);
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(_settings.RoomId) || string.IsNullOrWhiteSpace(_settings.RoomSecret))
-            throw new InvalidOperationException("RoomId and RoomSecret are required for Drive mode.");
+            throw new InvalidOperationException("RoomId and RoomSecret are required for Drive mode when Google auth is disabled.");
 
         await _relay.JoinRoomAsync(_settings.RoomId, _settings.RoomSecret);
         Volatile.Write(ref _joinedRoom, 1);
@@ -119,13 +130,14 @@ public sealed class DriveClipboardSync : IDisposable
         if (_loopGuard.ShouldSuppressLocalPublish(now, hash))
             return;
 
-        var objectKey = BuildObjectKey(_settings.RoomId, now, _settings.DeviceId, hash);
+        var roomId = EffectiveRoomId;
+        var objectKey = BuildObjectKey(roomId, now, _settings.DeviceId, hash);
         _log.Info($"Uploading to Drive... key={objectKey}");
 
         var (fileId, sizeBytes) = await _store.UploadTextAsync(objectKey, text, CancellationToken.None);
 
         var pointer = new ClipboardItemPointer(
-            RoomId: _settings.RoomId,
+            RoomId: roomId,
             OriginDeviceId: _settings.DeviceId,
             TsUtcMs: now.ToUnixTimeMilliseconds(),
             ObjectKey: objectKey,
@@ -142,7 +154,7 @@ public sealed class DriveClipboardSync : IDisposable
         {
             try
             {
-                _manifestCache ??= await _manifestStore.LoadAsync(_settings.RoomId, CancellationToken.None);
+                _manifestCache ??= await _manifestStore.LoadAsync(roomId, CancellationToken.None);
                 _manifestCache.AppendOrReplaceNewestFirst(
                     DriveHistoryManifestItem.FromPointer(pointer, HistoryItemKind.Text, title: text.Length <= 120 ? text : text.Substring(0, 120), preview: text.Length <= 120 ? text : text.Substring(0, 120)),
                     maxItems: 10);
@@ -167,7 +179,7 @@ public sealed class DriveClipboardSync : IDisposable
                 return;
             }
 
-            if (!string.Equals(pointer.RoomId, _settings.RoomId, StringComparison.Ordinal))
+            if (!string.Equals(pointer.RoomId, EffectiveRoomId, StringComparison.Ordinal))
                 return;
 
             if (!string.Equals(pointer.ContentType, "text", StringComparison.OrdinalIgnoreCase))

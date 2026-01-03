@@ -28,6 +28,14 @@
     <PackageReference Include="Google.Apis.Auth" Version="1.68.0" />
   </ItemGroup>
 
+  <!-- Bundle Google OAuth Desktop app client secrets JSON next to the exe (optional override via Settings). -->
+  <ItemGroup>
+    <None Include="..\..\client_secret_*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
 
 

@@ -19,10 +19,25 @@ System-wide clipboard sync with two supported variants:
 - .NET SDK 8.x
 - Windows (for the WPF tray agent)
 
+### Build & Run (server)
+
+```powershell
+dotnet build .\server\RelayServer\RelayServer.csproj -c Release
+dotnet run --project .\server\RelayServer\RelayServer.csproj -c Release -- --urls http://0.0.0.0:5104
+```
+
+### Build & Run (Client)
+
+```powershell
+dotnet build .\clients\ClipboardSync.WindowsAgent\ClipboardSync.WindowsAgent.csproj -c Release
+.\clients\ClipboardSync.WindowsAgent\bin\Release\net8.0-windows\ClipboardSync.WindowsAgent.exe
+```
+
 ### Build (all)
 
 ```powershell
 dotnet build .\ClipboardSync.sln -c Release
+dotnet test .\ClipboardSync.sln -c Release -p:BaseOutputPath=".\artifacts\test-build\"
 ```
 
 ### Run tests (all)

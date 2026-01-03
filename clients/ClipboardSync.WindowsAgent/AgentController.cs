@@ -13,6 +13,7 @@ namespace ClipboardSync.WindowsAgent;
 public sealed partial class AgentController : IDisposable
 {
     private readonly object _gate = new();
+    private readonly object _historyGate = new();
 
     private readonly ClipboardLoopGuard _loopGuard = new();
     private readonly AppSettingsSnapshot _settings;
@@ -26,6 +27,7 @@ public sealed partial class AgentController : IDisposable
 
     // History helpers (Drive mode: separate lightweight access for manifest + downloads)
     private DriveServiceCache? _driveSvc;
+    private HistoryItem[] _historyCache = Array.Empty<HistoryItem>();
 
     public event Action<string>? StatusChanged;
     public event Action? HistoryMayHaveChanged;
@@ -61,34 +63,139 @@ public sealed partial class AgentController : IDisposable
             _poller.FilesChanged += OnLocalClipboardFilesChanged;
 
             _poller.Start();
-            _ = _relay.ConnectAsync();
+
+            if (_settings.IsDriveMode)
+            {
+                // Drive mode needs Google OAuth; if server auth is enabled, we also authenticate using the same Google account.
+                _ = StartDriveModeAsync();
+            }
+            else
+            {
+                _ = _relay.ConnectAsync();
+            }
 
             // Apply persisted preference after boot.
             SetPublishEnabled(_publishEnabledInitial);
 
             if (_settings.IsDriveMode)
             {
-                _driveSync ??= new Drive.DriveClipboardSync(_settings, _relay, _poller, _loopGuard, _log);
-                _driveSync.Start();
+                // Drive sync is started by StartDriveModeAsync (after Google initialization).
             }
+        }
+    }
+
+    private async Task StartDriveModeAsync()
+    {
+        try
+        {
+            var svc = await EnsureDriveServiceAsync();
+            _log.Info($"Google Drive auth ready. Using OAuth client secrets: {svc.ClientSecretsPath}");
+
+            if (_settings.UseGoogleAccountAuth)
+            {
+                // Ensure we have a fresh Google access token, then exchange for a RelayServer JWT.
+                var googleAccessToken = await svc.Credential.GetAccessTokenForRequestAsync();
+                try
+                {
+                    var status = await Auth.GoogleServerAuth.GetServerAuthStatusAsync(_settings.ServerBaseUrl, CancellationToken.None);
+                    if (!status.Enabled)
+                    {
+                        _log.Warn(
+                            "Google account auth is enabled, but RelayServer auth is DISABLED. " +
+                            "Enable server auth (Auth:Enabled=true, Auth:JwtSigningKey, Auth:GoogleClientIds) or turn OFF 'Use Google account for authentication'.");
+                        throw new InvalidOperationException("RelayServer auth disabled.");
+                    }
+
+                    // Prefer ID token when available (more reliable audience validation than access token tokeninfo).
+                    var googleIdToken = svc.Credential.Token?.IdToken;
+                    if (!string.IsNullOrWhiteSpace(googleIdToken))
+                        _log.Info("Using Google ID token for RelayServer auth exchange.");
+                    else
+                        _log.Warn("Google ID token not available; falling back to Google access token for RelayServer auth exchange.");
+
+                    var auth = await Auth.GoogleServerAuth.LoginAsync(_settings.ServerBaseUrl, googleIdToken, googleAccessToken, CancellationToken.None);
+                    _log.Info($"Authenticated to RelayServer via Google. subject={auth.Subject} expiresUtc={auth.ExpiresUtc:O}");
+                    _relay?.SetBearerToken(auth.Token);
+                }
+                catch (Exception ex)
+                {
+                    _log.Error(
+                        "Google account auth is enabled, but RelayServer token exchange failed. " +
+                        "If you want Room-based testing, turn OFF 'Use Google account for authentication'. " +
+                        "If you want Google-based sharing, ensure you're running the latest RelayServer from THIS repo and that it exposes /auth/status and /auth/google. " +
+                        "Then enable auth on the server (Auth:Enabled=true, Auth:JwtSigningKey, Auth:GoogleClientIds).",
+                        ex);
+                    throw;
+                }
+            }
+
+            await (_relay?.ConnectAsync() ?? Task.CompletedTask);
+
+            lock (_gate)
+            {
+                if (_driveSync is null && _relay is not null && _poller is not null)
+                {
+                    _driveSync = new Drive.DriveClipboardSync(
+                        _settings,
+                        _relay,
+                        _poller,
+                        _loopGuard,
+                        _log,
+                        store: svc.Store,
+                        manifestStore: svc.Manifest);
+                }
+            }
+
+            _driveSync?.Start();
+        }
+        catch (Exception ex)
+        {
+            if (ex is InvalidOperationException ioe &&
+                ioe.Message.Contains("GoogleClientSecretsPath is required", StringComparison.OrdinalIgnoreCase))
+            {
+                _log.Error("Drive mode startup failed: GoogleClientSecretsPath is missing. Set 'Google secrets path' in tray Settings, then Restart.", ex);
+                return;
+            }
+
+            _log.Error("Drive mode startup failed", ex);
         }
     }
 
     public Task ConnectAsync() => _relay?.ConnectAsync() ?? Task.CompletedTask;
     public Task DisconnectAsync() => _relay?.DisconnectAsync() ?? Task.CompletedTask;
 
+    /// <summary>
+    /// Returns the last known history items (best-effort, in-memory cache).
+    /// Useful for making UI feel responsive in Drive mode, where fetching the manifest can be slow.
+    /// </summary>
+    public HistoryItem[] GetHistoryCacheSnapshot(int limit)
+    {
+        limit = Math.Clamp(limit, 1, 200);
+        lock (_historyGate)
+        {
+            if (_historyCache.Length == 0) return Array.Empty<HistoryItem>();
+            if (_historyCache.Length <= limit) return _historyCache.ToArray();
+            return _historyCache.Take(limit).ToArray();
+        }
+    }
+
     public async Task<HistoryItem[]> GetRemoteHistoryAsync(int limit)
     {
+        limit = Math.Clamp(limit, 1, 200);
         try
         {
             if (_settings.IsDriveMode)
             {
                 var (manifest, _) = await EnsureDriveHistoryDepsAsync();
                 var loaded = await manifest.LoadAsync(_settings.RoomId, CancellationToken.None);
-                return loaded.ToHistoryItems().Take(limit).ToArray();
+                var items = loaded.ToHistoryItems().Take(limit).ToArray();
+                lock (_historyGate) _historyCache = items.ToArray();
+                return items;
             }
 
-            return await (_relay?.GetHistoryAsync(limit) ?? Task.FromResult(Array.Empty<HistoryItem>()));
+            var relayItems = await (_relay?.GetHistoryAsync(limit) ?? Task.FromResult(Array.Empty<HistoryItem>()));
+            lock (_historyGate) _historyCache = relayItems.ToArray();
+            return relayItems;
         }
         catch (Exception ex)
         {
@@ -178,13 +285,14 @@ public sealed partial class AgentController : IDisposable
             {
                 var svc = await EnsureDriveServiceAsync();
                 var now = DateTimeOffset.UtcNow;
-                var objectKey = $"clips/{_settings.RoomId}/{now.ToUnixTimeMilliseconds()}_{_settings.DeviceId:N}_{ClipboardProtocol.HashToHex(hash)}_{fileName}";
+                var roomId = EffectiveRoomId(_settings);
+                var objectKey = $"clips/{roomId}/{now.ToUnixTimeMilliseconds()}_{_settings.DeviceId:N}_{ClipboardProtocol.HashToHex(hash)}_{fileName}";
 
                 await using var ms = new MemoryStream(bytes);
                 var (fileId, sizeBytes) = await svc.Store.UploadFileAsync(objectKey, fileName, ms, "application/octet-stream", CancellationToken.None);
 
                 var pointer = new ClipboardItemPointer(
-                    RoomId: _settings.RoomId,
+                    RoomId: roomId,
                     OriginDeviceId: _settings.DeviceId,
                     TsUtcMs: now.ToUnixTimeMilliseconds(),
                     ObjectKey: objectKey,
@@ -196,7 +304,7 @@ public sealed partial class AgentController : IDisposable
                 await (_relay?.PublishPointerAsync(new ClipboardPointerPublish(pointer)) ?? Task.CompletedTask);
 
                 // Update manifest (best effort).
-                var manifest = await svc.Manifest.LoadAsync(_settings.RoomId, CancellationToken.None);
+                var manifest = await svc.Manifest.LoadAsync(roomId, CancellationToken.None);
                 manifest.AppendOrReplaceNewestFirst(
                     DriveHistoryManifestItem.FromPointer(pointer, HistoryItemKind.File, title: fileName, preview: null),
                     maxItems: 10);
@@ -216,6 +324,9 @@ public sealed partial class AgentController : IDisposable
             _log.Error("UploadFile failed", ex);
         }
     }
+
+    internal static string EffectiveRoomId(AppSettingsSnapshot settings)
+        => settings.UseGoogleAccountAuth ? "default" : settings.RoomId;
 
     private void OnHistoryItemAdded(HistoryItemAdded added)
     {
@@ -363,16 +474,20 @@ public sealed partial class AgentController : IDisposable
 
 internal sealed class DriveServiceCache
 {
-    public DriveServiceCache(IDriveManifestStore manifest, IDriveClipboardStore store, Google.Apis.Drive.v3.DriveService drive)
+    public DriveServiceCache(IDriveManifestStore manifest, IDriveClipboardStore store, Google.Apis.Drive.v3.DriveService drive, Google.Apis.Auth.OAuth2.UserCredential credential, string clientSecretsPath)
     {
         Manifest = manifest;
         Store = store;
         Drive = drive;
+        Credential = credential;
+        ClientSecretsPath = clientSecretsPath;
     }
 
     public IDriveManifestStore Manifest { get; }
     public IDriveClipboardStore Store { get; }
     public Google.Apis.Drive.v3.DriveService Drive { get; }
+    public Google.Apis.Auth.OAuth2.UserCredential Credential { get; }
+    public string ClientSecretsPath { get; }
 }
 
 partial class AgentController
@@ -387,14 +502,18 @@ partial class AgentController
     {
         if (_driveSvc is not null) return _driveSvc;
 
+        var tokenScope = _settings.UseGoogleAccountAuth ? "google" : _settings.RoomId;
         var tokenDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "ClipboardSync",
             "googleTokens",
-            _settings.RoomId);
+            tokenScope);
 
-        var drive = await GoogleDriveAuth.GetDriveServiceAsync(_settings.GoogleClientSecretsPath, tokenDir, CancellationToken.None);
-        _driveSvc = new DriveServiceCache(new DriveManifestStore(drive), new DriveClipboardStore(drive), drive);
+        // In Google-auth mode, we intentionally ignore any user-provided secrets path override.
+        // The app will use a bundled client_secret*.json next to the executable.
+        var secretsPath = _settings.UseGoogleAccountAuth ? "" : _settings.GoogleClientSecretsPath;
+        var (drive, credential, resolvedPath) = await GoogleDriveAuth.GetDriveServiceAndCredentialAsync(secretsPath, tokenDir, CancellationToken.None);
+        _driveSvc = new DriveServiceCache(new DriveManifestStore(drive), new DriveClipboardStore(drive), drive, credential, resolvedPath);
         return _driveSvc;
     }
 }
@@ -407,6 +526,7 @@ public readonly record struct AppSettingsSnapshot(
     string RoomId,
     string RoomSecret,
     string GoogleClientSecretsPath,
+    bool UseGoogleAccountAuth,
     int MaxInlineTextBytes,
     int MaxUploadBytes)
 {
@@ -419,6 +539,7 @@ public readonly record struct AppSettingsSnapshot(
             s.RoomId ?? "default",
             s.RoomSecret ?? "",
             s.GoogleClientSecretsPath ?? "",
+            s.UseGoogleAccountAuth,
             s.MaxInlineTextBytes,
             s.MaxUploadBytes) { }
 

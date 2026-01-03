@@ -18,7 +18,7 @@ todos:
       - phase1-server
   - id: phase2-auth
     content: Add register/login + JWT auth; require auth for hub connection; switch from global group to per-user group.
-    status: pending
+    status: completed
     dependencies:
       - phase1-windows-client
   - id: phase3-encryption-storage

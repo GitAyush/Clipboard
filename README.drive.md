@@ -51,10 +51,44 @@ Tray → Settings:
 - **Server URL** = `http://localhost:5104` (host) or `http://<HOST_IP>:5104` (Sandbox)
 - **Room ID** = e.g. `room1`
 - **Room secret** = e.g. `secret1`
-- **Google secrets path** = path to downloaded OAuth client JSON
+- **Google secrets path** = optional override path to downloaded OAuth client JSON (the app can also use a bundled `client_secret*.json` next to the exe)
 
 First run will open a browser for Google sign-in and cache tokens under:
 `%AppData%\ClipboardSync\googleTokens\<roomId>\`
+
+## Optional: Google-account authentication for syncing (recommended)
+
+If you enable server auth, **devices logged into the same Google account will sync together** (without sharing a room secret).
+Rooms still exist as a **testing / segmentation** tool (e.g. `default`, `room1`, etc.), but are **scoped under your Google account** on the server.
+
+### What we request from Google (and why)
+
+The Windows agent uses an installed-app OAuth flow and requests these scopes:
+- **Drive appDataFolder** (`DriveAppdata`): store clipboard payloads + per-room manifest in your Google Drive `appDataFolder`.
+- **Email** (`userinfo.email`): to identify which Google account is logged in (transparency) and to let the server scope syncing to the same account.
+- **OpenID** (`openid`): enables standard identity semantics in the consent flow.
+
+### What we store (and where)
+- **On your device**: Google OAuth tokens cached under `%AppData%\ClipboardSync\googleTokens\<roomId>\` (Google library FileDataStore).
+- **In your Google Drive**: clipboard payload files + `manifest.<roomId>.json` inside `appDataFolder`.
+- **On our RelayServer**: no Drive payloads; when auth is enabled, the server issues short-lived JWTs but does **not** persist your tokens.
+
+### Enable auth on the server
+
+Configure `server/RelayServer/appsettings*.json` (or environment variables) with:
+- `Auth:Enabled = true`
+- `Auth:JwtSigningKey = <random secret>`
+- `Auth:GoogleClientIds = [ "<your desktop OAuth client_id>" ]`
+
+The `GoogleClientIds` value should match the `client_id` inside your downloaded Google OAuth secrets JSON.
+
+### Enable auth on the Windows agent
+
+Tray → Settings:
+- **Use Google account for authentication** = ON
+- **Sync mode** = `Drive`
+- **Room secret** can be blank (optional) when server auth is enabled
+- **Room ID** remains useful for testing/segmentation (e.g. `default`, `room1`)
 
 ## Windows Sandbox (recommended cross-device test on one PC)
 
