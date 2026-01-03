@@ -10,6 +10,7 @@ public partial class HistoryWindow : Window
     private readonly AgentController _controller;
     private readonly ObservableCollection<HistoryItem> _items = new();
     private HistoryItem? _selected;
+    private int _refreshQueued;
 
     public HistoryWindow(AgentController controller)
     {
@@ -24,7 +25,45 @@ public partial class HistoryWindow : Window
             Hide();
         };
 
+        Activated += (_, _) => QueueRefresh();
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible) QueueRefresh();
+        };
+
+        _controller.HistoryMayHaveChanged += OnHistoryMayHaveChanged;
+
         _ = RefreshAsync();
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _controller.HistoryMayHaveChanged -= OnHistoryMayHaveChanged;
+        base.OnClosed(e);
+    }
+
+    private void OnHistoryMayHaveChanged()
+    {
+        if (!IsVisible) return;
+        QueueRefresh();
+    }
+
+    private void QueueRefresh()
+    {
+        if (Interlocked.Exchange(ref _refreshQueued, 1) == 1) return;
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            try
+            {
+                // Coalesce bursts; also gives Drive manifest time to upload.
+                await Task.Delay(400);
+                await RefreshAsync();
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _refreshQueued, 0);
+            }
+        });
     }
 
     private async Task RefreshAsync()

@@ -28,6 +28,7 @@ public sealed partial class AgentController : IDisposable
     private DriveServiceCache? _driveSvc;
 
     public event Action<string>? StatusChanged;
+    public event Action? HistoryMayHaveChanged;
 
     public AgentController(Settings.AppSettings settings)
     {
@@ -54,6 +55,7 @@ public sealed partial class AgentController : IDisposable
 
             _relay.ClipboardChanged += OnRemoteClipboardChanged;
             _relay.ClipboardPointerChanged += OnRemotePointerChanged;
+            _relay.HistoryItemAdded += OnHistoryItemAdded;
             _relay.StatusChanged += OnRelayStatusChanged;
             _poller.TextChanged += OnLocalClipboardTextChanged;
             _poller.FilesChanged += OnLocalClipboardFilesChanged;
@@ -201,16 +203,24 @@ public sealed partial class AgentController : IDisposable
                 await svc.Manifest.SaveAsync(manifest, CancellationToken.None);
 
                 _log.Info($"File uploaded to Drive and pointer published. name={fileName} size={bytes.Length} fileId={fileId}");
+                HistoryMayHaveChanged?.Invoke();
                 return;
             }
 
             await (_relay?.PublishFileAsync(new ClipboardFilePublish(_settings.DeviceId, fileName, "application/octet-stream", bytes)) ?? Task.CompletedTask);
             _log.Info($"File uploaded to relay history. name={fileName} size={bytes.Length}");
+            HistoryMayHaveChanged?.Invoke();
         }
         catch (Exception ex)
         {
             _log.Error("UploadFile failed", ex);
         }
+    }
+
+    private void OnHistoryItemAdded(HistoryItemAdded added)
+    {
+        // Relay mode: server confirms history append (metadata only).
+        HistoryMayHaveChanged?.Invoke();
     }
 
     private async void OnLocalClipboardTextChanged(object? sender, string text)
@@ -247,6 +257,7 @@ public sealed partial class AgentController : IDisposable
                 TextHash: hash);
 
             await (_relay?.PublishAsync(publish) ?? Task.CompletedTask);
+            HistoryMayHaveChanged?.Invoke();
         }
         catch (Exception ex)
         {
@@ -307,7 +318,14 @@ public sealed partial class AgentController : IDisposable
     private void OnRemotePointerChanged(ClipboardPointerChanged changed)
     {
         if (!_settings.IsDriveMode) return;
-        _ = _driveSync?.OnPointerChangedAsync(changed.Pointer);
+        _ = HandlePointerAndNotifyAsync(changed.Pointer);
+    }
+
+    private async Task HandlePointerAndNotifyAsync(ClipboardItemPointer pointer)
+    {
+        await (_driveSync?.OnPointerChangedAsync(pointer) ?? Task.CompletedTask);
+        // Drive mode: pointer receipt implies history likely changed (manifest updated by origin).
+        HistoryMayHaveChanged?.Invoke();
     }
 
     private void OnRelayStatusChanged(string status)
@@ -323,6 +341,7 @@ public sealed partial class AgentController : IDisposable
             {
                 _relay.ClipboardChanged -= OnRemoteClipboardChanged;
                 _relay.ClipboardPointerChanged -= OnRemotePointerChanged;
+                _relay.HistoryItemAdded -= OnHistoryItemAdded;
                 _relay.StatusChanged -= OnRelayStatusChanged;
                 _relay.Dispose();
                 _relay = null;

@@ -190,36 +190,6 @@ public sealed class TrayIcon : IDisposable
 
         try
         {
-<<<<<<< Current (Your changes)
-            _recentMenu.DropDownItems.Clear();
-            var items = await _controller.GetRemoteHistoryAsync(5);
-
-            if (items.Length == 0)
-            {
-                _recentMenu.DropDownItems.Add(new ToolStripMenuItem("(empty)") { Enabled = false });
-                return;
-            }
-
-            foreach (var it in items)
-            {
-                var label = it.Title;
-                if (string.IsNullOrWhiteSpace(label)) label = it.Id;
-                if (label.Length > 70) label = label.Substring(0, 70) + "...";
-
-                var mi = new ToolStripMenuItem(label)
-                {
-                    Enabled = it.Kind == ClipboardSync.Protocol.HistoryItemKind.Text
-                };
-
-                mi.Click += async (_, _) => await _controller.CopyHistoryItemToClipboardAsync(it);
-                _recentMenu.DropDownItems.Add(mi);
-            }
-        }
-        catch (Exception ex)
-        {
-            _recentMenu.DropDownItems.Clear();
-            _recentMenu.DropDownItems.Add(new ToolStripMenuItem($"(error: {ex.Message})") { Enabled = false });
-=======
             // Show something immediately; we'll replace after async load.
             _recentMenu.DropDownItems.Clear();
             _recentMenu.DropDownItems.Add(new ToolStripMenuItem("(loading...)") { Enabled = false });
@@ -260,7 +230,6 @@ public sealed class TrayIcon : IDisposable
                 _recentMenu.DropDownItems.Clear();
                 _recentMenu.DropDownItems.Add(new ToolStripMenuItem($"(error: {ex.Message})") { Enabled = false });
             });
->>>>>>> Incoming (Background Agent changes)
         }
     }
 

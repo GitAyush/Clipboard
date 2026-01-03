@@ -10,6 +10,7 @@ public sealed class RelayConnection : IDisposable
     private const string ClipboardChangedMethod = "ClipboardChanged";
     private const string ClipboardPublishMethod = "ClipboardPublish";
     private const string ClipboardPointerChangedMethod = "ClipboardPointerChanged";
+    private const string HistoryItemAddedMethod = "HistoryItemAdded";
     private const string JoinRoomMethod = "JoinRoom";
     private const string ClipboardPointerPublishMethod = "ClipboardPointerPublish";
     private const string GetHistoryMethod = "GetHistory";
@@ -24,6 +25,7 @@ public sealed class RelayConnection : IDisposable
 
     public event Action<ClipboardChanged>? ClipboardChanged;
     public event Action<ClipboardPointerChanged>? ClipboardPointerChanged;
+    public event Action<HistoryItemAdded>? HistoryItemAdded;
     public event Action<string>? StatusChanged;
 
     public RelayConnection(AppSettingsSnapshot settings, LogBuffer log)
@@ -61,17 +63,23 @@ public sealed class RelayConnection : IDisposable
                 ClipboardPointerChanged?.Invoke(changed);
             });
 
+            conn.On<HistoryItemAdded>(HistoryItemAddedMethod, added =>
+            {
+                _log.Info($"Received HistoryItemAdded kind={added.Item.Kind} id={added.Item.Id} title={added.Item.Title}");
+                HistoryItemAdded?.Invoke(added);
+            });
+
             conn.Reconnecting += error =>
             {
                 _log.Warn($"Relay reconnecting... ({error?.Message ?? "unknown error"})");
                 StatusChanged?.Invoke("Reconnecting");
                 return Task.CompletedTask;
             };
-            conn.Reconnected += connectionId =>
+            conn.Reconnected += async connectionId =>
             {
                 _log.Info($"Relay reconnected. connectionId={connectionId}");
                 StatusChanged?.Invoke("Connected");
-                return Task.CompletedTask;
+                await TryJoinRoomAsync(conn);
             };
             conn.Closed += error =>
             {
@@ -93,11 +101,7 @@ public sealed class RelayConnection : IDisposable
 
             // Always join room for both Relay and Drive modes.
             // Relay mode uses room scoping for both payload + history.
-            if (!string.IsNullOrWhiteSpace(_settings.RoomId) && !string.IsNullOrWhiteSpace(_settings.RoomSecret))
-            {
-                await conn.InvokeAsync(JoinRoomMethod, _settings.RoomId, _settings.RoomSecret);
-                _log.Info($"Joined room. roomId={_settings.RoomId}");
-            }
+            await TryJoinRoomAsync(conn);
         }
         catch (Exception ex)
         {
@@ -190,6 +194,24 @@ public sealed class RelayConnection : IDisposable
 
         var resp = await conn.InvokeAsync<GetHistoryTextResponse>(GetHistoryTextMethod, new GetHistoryTextRequest(itemId));
         return resp?.Text;
+    }
+
+    private async Task TryJoinRoomAsync(HubConnection conn)
+    {
+        if (string.IsNullOrWhiteSpace(_settings.RoomId) || string.IsNullOrWhiteSpace(_settings.RoomSecret))
+            return;
+        if (conn.State != HubConnectionState.Connected)
+            return;
+
+        try
+        {
+            await conn.InvokeAsync(JoinRoomMethod, _settings.RoomId, _settings.RoomSecret);
+            _log.Info($"Joined room. roomId={_settings.RoomId}");
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"JoinRoom failed: {ex.Message}");
+        }
     }
 
     private static string BuildHubUrl(string serverBaseUrl)
