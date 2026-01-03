@@ -11,6 +11,17 @@ public sealed class RelayConnectionIntegrationTests
     [Fact]
     public async Task RelayConnection_CanConnect_JoinRoom_AndPublishPointer()
     {
+        // This test validates the non-auth JoinRoom flow.
+        // Ensure auth is disabled even if the developer enabled it locally via JSON/env vars.
+        var prevAuthEnabled = Environment.GetEnvironmentVariable("Auth__Enabled");
+        var prevAuthJwtSigningKey = Environment.GetEnvironmentVariable("Auth__JwtSigningKey");
+        var prevAuthGoogleClientId0 = Environment.GetEnvironmentVariable("Auth__GoogleClientIds__0");
+        try
+        {
+            Environment.SetEnvironmentVariable("Auth__Enabled", "false");
+            Environment.SetEnvironmentVariable("Auth__JwtSigningKey", null);
+            Environment.SetEnvironmentVariable("Auth__GoogleClientIds__0", null);
+
         var port = TestPort.GetFreeTcpPort();
         var baseUrl = new Uri($"http://127.0.0.1:{port}");
 
@@ -80,6 +91,13 @@ public sealed class RelayConnectionIntegrationTests
         {
             await app.StopAsync();
             await app.DisposeAsync();
+        }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("Auth__Enabled", prevAuthEnabled);
+            Environment.SetEnvironmentVariable("Auth__JwtSigningKey", prevAuthJwtSigningKey);
+            Environment.SetEnvironmentVariable("Auth__GoogleClientIds__0", prevAuthGoogleClientId0);
         }
     }
 }

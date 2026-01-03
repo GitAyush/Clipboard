@@ -28,7 +28,11 @@ You need an OAuth **Desktop app** client credentials JSON:
 2. Enable **Google Drive API**
 3. Configure **OAuth consent screen** (add yourself as a test user if needed)
 4. Credentials → **Create Credentials → OAuth client ID** → **Desktop app**
-5. Download JSON to e.g. `C:\Users\agar\Downloads\client_secret.json`
+5. Download JSON to e.g. `C:\Users\you\Downloads\client_secret.json`
+
+Security note:
+- This file contains an OAuth **client secret**. Do **not** commit it to source control.
+- This repo’s `.gitignore` already ignores `client_secret*` by default.
 
 ## Run (local)
 

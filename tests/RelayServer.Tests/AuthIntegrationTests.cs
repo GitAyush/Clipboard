@@ -124,6 +124,59 @@ public sealed class AuthIntegrationTests
         });
     }
 
+    [Fact]
+    public async Task ClipboardPointerPublish_WhenAuthEnabled_NormalizesPointerRoomIdToJoinedRoom()
+    {
+        await using var factory = new AuthTestFactory();
+        var http = factory.CreateClient();
+        _ = factory.CreateClient(); // ensure server is started
+
+        var hubUrl = new Uri(factory.Server.BaseAddress, "/hub/clipboard");
+
+        var resp = await http.PostAsJsonAsync("/auth/google", new { accessToken = "userA" });
+        resp.EnsureSuccessStatusCode();
+        var auth = await resp.Content.ReadFromJsonAsync<AuthResponse>();
+        var jwt = auth!.token;
+
+        var received = new TaskCompletionSource<ClipboardPointerChanged>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var conn = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o =>
+            {
+                o.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                o.Transports = HttpTransportType.LongPolling;
+                o.AccessTokenProvider = () => Task.FromResult(jwt)!;
+            })
+            .AddMessagePackProtocol()
+            .Build();
+
+        conn.On<ClipboardPointerChanged>("ClipboardPointerChanged", msg => received.TrySetResult(msg));
+        await conn.StartAsync();
+
+        // Join "default", but publish a pointer with a different roomId.
+        await conn.InvokeAsync("JoinRoom", "default", "");
+
+        var p = new ClipboardItemPointer(
+            RoomId: "room1",
+            OriginDeviceId: Guid.NewGuid(),
+            TsUtcMs: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            ObjectKey: "clips/room1/1.txt",
+            ProviderFileId: "file123",
+            ContentHash: ClipboardProtocol.ComputeTextHashUtf8("hello"),
+            SizeBytes: 5,
+            ContentType: "text");
+
+        await conn.InvokeAsync("ClipboardPointerPublish", new ClipboardPointerPublish(p));
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        var changed = await received.Task.WaitAsync(cts.Token);
+
+        // Server should normalize to the joined room ("default") in auth mode.
+        Assert.Equal("default", changed.Pointer.RoomId);
+        Assert.Equal(p.ProviderFileId, changed.Pointer.ProviderFileId);
+        Assert.True(ClipboardProtocol.HashEquals(p.ContentHash, changed.Pointer.ContentHash));
+    }
+
     private sealed class AuthResponse
     {
         public string token { get; set; } = "";

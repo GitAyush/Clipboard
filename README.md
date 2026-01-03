@@ -5,6 +5,12 @@ System-wide clipboard sync with two supported variants:
 - **Relay mode** (server relays clipboard payload): see `README.relay.md`
 - **Drive mode** (server relays pointers only; payload stored in Google Drive): see `README.drive.md`
 
+## Documentation
+
+- **User guide**: `docs/USER_GUIDE.md`
+- **Developer guide**: `docs/DEVELOPER_GUIDE.md`
+- **Docs index**: `docs/README.md`
+
 ## Repo layout
 
 - **Shared protocol**: `shared/ClipboardSync.Protocol/`
