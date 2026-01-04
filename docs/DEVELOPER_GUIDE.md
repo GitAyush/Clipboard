@@ -53,6 +53,12 @@ Run:
 .\scripts\coverage.ps1
 ```
 
+If your PowerShell execution policy blocks `.ps1` scripts (common on corporate machines), use:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\coverage.ps1
+```
+
 Output:
 - `.\coverage-report\index.html`
 
@@ -64,6 +70,18 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish-agent.ps1
 
 Output:
 - `.\artifacts\windows-agent\win-x64\`
+
+## Production OAuth packaging (no user config)
+
+Goal: end users should not paste OAuth client IDs or secret paths.
+
+- Keep `client_secret*.json` **out of git** (this repo ignores it).
+- For local dev, you can drop `client_secret.json` into:
+  - `clients/ClipboardSync.WindowsAgent/` (it will be copied next to the exe on build/publish)
+  - or next to the published exe directly
+- For releases, use GitHub Actions to inject the OAuth JSON at build time:
+  - Workflow: `.github/workflows/windowsagent-release.yml`
+  - Required GitHub Secret: `GOOGLE_OAUTH_CLIENT_SECRET_JSON` (paste the full JSON contents)
 
 ## Configuration (auth)
 

@@ -64,9 +64,9 @@ jobs:
             cd \"$ORACLE_APP_DIR/deploy/relayserver\"
             export DOMAIN=\"$DOMAIN\"
             export ACME_EMAIL=\"$ACME_EMAIL\"
-            export Auth__Enabled=\"$AUTH_ENABLED\"
-            export Auth__JwtSigningKey=\"$AUTH_JWT_SIGNING_KEY\"
-            export Auth__GoogleClientIds__0=\"$AUTH_GOOGLE_CLIENT_ID\"
+            export AUTH_ENABLED=\"$AUTH_ENABLED\"
+            export AUTH_JWT_SIGNING_KEY=\"$AUTH_JWT_SIGNING_KEY\"
+            export AUTH_GOOGLE_CLIENT_ID=\"$AUTH_GOOGLE_CLIENT_ID\"
             docker compose up -d --build
           "
 

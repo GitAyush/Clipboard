@@ -48,6 +48,15 @@ If you enable Google-based sharing:
 
 This requires enabling server auth and turning on “Use Google account for authentication” in the agent.
 
+### What data is used and where it’s stored (transparency)
+- **Google sign-in**: the agent uses Google OAuth to get permission to use **your Google Drive appDataFolder** (Drive mode) and (optionally) to authenticate to the RelayServer (Google-auth mode).
+- **Stored on your PC**: Google OAuth tokens (so you don’t have to log in every time). You can clear them via “Google: sign out / switch account”.
+- **Stored in your Google Drive** (Drive mode): clipboard payloads (text / file data) and a small manifest in `appDataFolder`.
+- **Stored on the RelayServer**:
+  - In Relay mode: clipboard payloads are relayed through the server.
+  - In Drive mode: the server relays **pointers** only.
+  - In Google-auth mode: the server validates your Google token and issues a short-lived RelayServer JWT; the server uses your Google account subject to isolate rooms per account.
+
 ## Troubleshooting
 
 ### “RelayServer auth is DISABLED”
@@ -63,10 +72,21 @@ If your server is hosted on a VM:
 - Prefer **HTTPS** with a domain name (required for Let’s Encrypt).
 - Your server URL in the agent should be: `https://<your-domain>`
 
+### Hosted server (AWS / any VPS)
+The same VM guidance applies to AWS EC2 or any VPS:
+- You can use a real domain, a free DNS name (DuckDNS), or the EC2 **Public IPv4 DNS** name.
+- If a corporate network blocks DuckDNS, prefer the EC2 hostname:
+  - `https://ec2-<ip>.<region>.compute.amazonaws.com`
+See `deploy/relayserver/README.md` for the Docker+Caddy VM steps.
+
 ### Hosted server (temporary): Cloudflare Tunnel from your PC
 If Oracle VM setup is blocked, you can expose a local RelayServer over HTTPS with Cloudflare Tunnel (no port forwarding).
 
 See: `deploy/cloudflare/README.md`.
+
+## Monitoring (recommended for hosted servers)
+If you host RelayServer on a VM (AWS/Oracle/etc.), use a free uptime monitor (e.g. UptimeRobot) to hit:
+- `https://<your-domain>/healthz`
 
 
 

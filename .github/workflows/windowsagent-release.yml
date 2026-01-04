@@ -1,0 +1,66 @@
+name: WindowsAgent Release (package with injected OAuth secrets)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "windowsagent-v*"
+
+jobs:
+  build_test_publish:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Inject Google OAuth client secrets (client_secret.json)
+        shell: pwsh
+        env:
+          GOOGLE_OAUTH_CLIENT_SECRET_JSON: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET_JSON }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:GOOGLE_OAUTH_CLIENT_SECRET_JSON)) {
+            throw "Missing secret GOOGLE_OAUTH_CLIENT_SECRET_JSON. Add it in GitHub repo settings → Secrets and variables → Actions."
+          }
+          $path = "clients/ClipboardSync.WindowsAgent/client_secret.json"
+          New-Item -ItemType Directory -Force -Path (Split-Path $path) | Out-Null
+          $env:GOOGLE_OAUTH_CLIENT_SECRET_JSON | Out-File -FilePath $path -Encoding utf8 -NoNewline
+          Write-Host "Wrote OAuth secrets to $path"
+
+      - name: Test
+        run: dotnet test .\ClipboardSync.sln -c Release
+
+      - name: Publish WindowsAgent (win-x64, single-file, self-contained)
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\scripts\publish-agent.ps1 -Runtime win-x64 -Configuration Release -SingleFile:$true -SelfContained:$true
+
+      - name: Remove injected OAuth secret file
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -Force -ErrorAction SilentlyContinue clients/ClipboardSync.WindowsAgent/client_secret.json
+
+      - name: Zip published output
+        shell: pwsh
+        run: |
+          $base = "artifacts/windows-agent"
+          $dir = Get-ChildItem $base -Directory -Filter "win-x64*" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $dir) { throw "No publish output found under $base" }
+          $zip = Join-Path $base ("ClipboardSync.WindowsAgent-" + $dir.Name + ".zip")
+          if (Test-Path $zip) { Remove-Item -Force $zip }
+          Compress-Archive -Path (Join-Path $dir.FullName "*") -DestinationPath $zip
+          Write-Host "Created $zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WindowsAgent-win-x64
+          path: artifacts/windows-agent/*.zip
+
+
