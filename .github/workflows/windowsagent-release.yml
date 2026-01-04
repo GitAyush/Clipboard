@@ -38,7 +38,8 @@ jobs:
       - name: Publish WindowsAgent (win-x64, single-file, self-contained)
         shell: pwsh
         run: |
-          powershell -ExecutionPolicy Bypass -File .\scripts\publish-agent.ps1 -Runtime win-x64 -Configuration Release -SingleFile:$true -SelfContained:$true
+          # Switch parameters: pass presence/absence (avoid -Switch:$true which can stringify in CI)
+          powershell -ExecutionPolicy Bypass -File .\scripts\publish-agent.ps1 -Runtime win-x64 -Configuration Release -SingleFile -SelfContained
 
       - name: Remove injected OAuth secret file
         if: always()
