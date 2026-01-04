@@ -34,10 +34,12 @@ public sealed class TrayIcon : IDisposable
 
     public void Initialize()
     {
+        var icon = TryGetAppIcon() ?? SystemIcons.Application;
+
         _icon = new NotifyIcon
         {
             Text = "ClipboardSync (Windows Agent)",
-            Icon = SystemIcons.Application,
+            Icon = icon,
             Visible = true,
             ContextMenuStrip = BuildMenu(),
         };
@@ -49,6 +51,35 @@ public sealed class TrayIcon : IDisposable
 
         // Best-effort: show whether server auth is enabled (useful for Google sign-in mode).
         _ = RefreshServerAuthStatusAsync();
+    }
+
+    private static Icon? TryGetAppIcon()
+    {
+        try
+        {
+            // Prefer an explicit .ico next to the exe (lets us ship a custom icon without hardcoding resources)
+            var exePath = Process.GetCurrentProcess().MainModule?.FileName;
+            if (!string.IsNullOrWhiteSpace(exePath))
+            {
+                var exeDir = Path.GetDirectoryName(exePath);
+                if (!string.IsNullOrWhiteSpace(exeDir))
+                {
+                    var icoPath = Path.Combine(exeDir, "ClipboardSync.ico");
+                    if (File.Exists(icoPath))
+                        return new Icon(icoPath);
+                }
+
+                // Fall back to the icon embedded in the executable (set via <ApplicationIcon>).
+                if (File.Exists(exePath))
+                    return Icon.ExtractAssociatedIcon(exePath);
+            }
+        }
+        catch
+        {
+            // ignore: best-effort only
+        }
+
+        return null;
     }
 
     private ContextMenuStrip BuildMenu()

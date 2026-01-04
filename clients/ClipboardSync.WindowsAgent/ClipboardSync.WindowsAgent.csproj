@@ -7,6 +7,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Optional app icon: if you add `Assets/ClipboardSync.ico`, it will be used for the published .exe -->
+    <ApplicationIcon Condition="Exists('Assets\\ClipboardSync.ico')">Assets\ClipboardSync.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,6 +28,14 @@
     <PackageReference Include="MessagePack" Version="3.1.4" />
     <PackageReference Include="Google.Apis.Drive.v3" Version="1.68.0.3373" />
     <PackageReference Include="Google.Apis.Auth" Version="1.68.0" />
+  </ItemGroup>
+
+  <!-- Optional icon. We don't commit a binary icon by default; drop one in locally or via CI if desired. -->
+  <ItemGroup>
+    <None Include="Assets\\ClipboardSync.ico" Condition="Exists('Assets\\ClipboardSync.ico')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 
   <!-- Bundle Google OAuth Desktop app client secrets JSON next to the exe.
