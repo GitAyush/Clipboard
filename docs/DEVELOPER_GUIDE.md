@@ -79,4 +79,34 @@ Some integration tests intentionally validate the non-auth flow. Test hosts forc
 - **Windows Sandbox helper**: `tools/WindowsSandbox/runme.wsb`
   - Used for “two device” testing on a single host (separate clipboard instances).
 
+## Deployment (Linux VM + Docker) — Oracle / AWS / any VPS
+
+This repo includes a Docker-based deployment bundle:
+- `deploy/relayserver/` (RelayServer + Caddy HTTPS)
+
+You can run it on:
+- Oracle Always Free (Ubuntu)
+- AWS EC2 Free Tier (Ubuntu)
+- Any small VPS (Hetzner/DigitalOcean/etc.)
+
+### CI/CD secrets (GitHub Actions)
+The workflow `.github/workflows/relayserver-deploy.yml` was initially written for Oracle, but the **same secrets work for any Ubuntu VM** (the names are historical):
+- `ORACLE_HOST`: VM public IP or DNS name
+- `ORACLE_USER`: SSH username (commonly `ubuntu` on AWS/Oracle Ubuntu images)
+- `ORACLE_SSH_PRIVATE_KEY`: private key used for SSH deploy
+- `ORACLE_APP_DIR`: remote folder to sync into (e.g. `/opt/clipboardsync`)
+- `RELAY_DOMAIN`: DNS name for HTTPS (can be a free DuckDNS name)
+- `ACME_EMAIL`: email for Let’s Encrypt registration
+- `AUTH_ENABLED`: `true` or `false`
+- `AUTH_JWT_SIGNING_KEY`: long random string (server-only secret)
+- `AUTH_GOOGLE_CLIENT_ID`: your Google OAuth Desktop client_id
+
+See `deploy/relayserver/README.md` for AWS EC2 steps + no-domain fallback.
+
+## Deployment (temporary): Cloudflare Tunnel
+
+If Oracle account provisioning is blocked, you can expose a local RelayServer over HTTPS using Cloudflare Tunnel.
+
+See: `deploy/cloudflare/README.md`.
+
 

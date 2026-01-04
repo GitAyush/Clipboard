@@ -58,4 +58,15 @@ This requires enabling server auth and turning on “Use Google account for auth
 - Don’t use `localhost` inside Sandbox.
 - Bind server to `0.0.0.0` and use `http://<HOST_IP>:5104` from Sandbox.
 
+### Hosted server (Oracle VM)
+If your server is hosted on a VM:
+- Prefer **HTTPS** with a domain name (required for Let’s Encrypt).
+- Your server URL in the agent should be: `https://<your-domain>`
+
+### Hosted server (temporary): Cloudflare Tunnel from your PC
+If Oracle VM setup is blocked, you can expose a local RelayServer over HTTPS with Cloudflare Tunnel (no port forwarding).
+
+See: `deploy/cloudflare/README.md`.
+
+
 

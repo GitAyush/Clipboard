@@ -1,0 +1,37 @@
+services:
+  relayserver:
+    build:
+      context: ../..
+      dockerfile: deploy/relayserver/Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_URLS: http://0.0.0.0:5104
+      ASPNETCORE_ENVIRONMENT: Production
+      # Auth config (server-only). Set these in the VM's environment (recommended) or in a mounted config file.
+      # Auth__Enabled: "true"
+      # Auth__JwtSigningKey: "..."
+      # Auth__GoogleClientIds__0: "..."
+    expose:
+      - "5104"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - relayserver
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+

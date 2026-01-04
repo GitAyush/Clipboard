@@ -1,0 +1,73 @@
+name: RelayServer CI + Deploy (Oracle VM)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - serverless
+    paths:
+      - "server/**"
+      - "shared/**"
+      - "deploy/relayserver/**"
+      - ".github/workflows/relayserver-deploy.yml"
+
+jobs:
+  build_test_deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Test
+        run: dotnet test ./ClipboardSync.sln -c Release
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.ORACLE_HOST }}
+          SSH_USER: ${{ secrets.ORACLE_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          printf "Host oracle\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/id_rsa\n  StrictHostKeyChecking yes\n" "$SSH_HOST" "$SSH_USER" >> ~/.ssh/config
+
+      - name: Upload deploy bundle
+        env:
+          ORACLE_APP_DIR: ${{ secrets.ORACLE_APP_DIR }}
+        run: |
+          rsync -az --delete \
+            --exclude ".git" \
+            --exclude "artifacts" \
+            --exclude "**/bin" \
+            --exclude "**/obj" \
+            ./ oracle:"$ORACLE_APP_DIR"
+
+      - name: Deploy (docker compose)
+        env:
+          ORACLE_APP_DIR: ${{ secrets.ORACLE_APP_DIR }}
+          DOMAIN: ${{ secrets.RELAY_DOMAIN }}
+          ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
+          AUTH_ENABLED: ${{ secrets.AUTH_ENABLED }}
+          AUTH_JWT_SIGNING_KEY: ${{ secrets.AUTH_JWT_SIGNING_KEY }}
+          AUTH_GOOGLE_CLIENT_ID: ${{ secrets.AUTH_GOOGLE_CLIENT_ID }}
+        run: |
+          ssh oracle "set -euo pipefail
+            cd \"$ORACLE_APP_DIR/deploy/relayserver\"
+            export DOMAIN=\"$DOMAIN\"
+            export ACME_EMAIL=\"$ACME_EMAIL\"
+            export Auth__Enabled=\"$AUTH_ENABLED\"
+            export Auth__JwtSigningKey=\"$AUTH_JWT_SIGNING_KEY\"
+            export Auth__GoogleClientIds__0=\"$AUTH_GOOGLE_CLIENT_ID\"
+            docker compose up -d --build
+          "
+
+

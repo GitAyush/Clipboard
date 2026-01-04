@@ -100,6 +100,8 @@ public static class RelayServerApp
         app.MapAuthEndpoints();
 
         app.MapGet("/", () => Results.Text("ClipboardSync RelayServer is running. Connect to /hub/clipboard (SignalR + MessagePack)."));
+        app.MapGet("/healthz", () => Results.Ok(new { ok = true }))
+            .WithName("Healthz");
         app.MapHub<ClipboardHub>("/hub/clipboard");
 
         // Relay mode: file download endpoint (payload stored in-memory by room+itemId).
