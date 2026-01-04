@@ -79,3 +79,4 @@ $RECYCLE.BIN/
 
 *.pdf
 client_secret*
+*.pem

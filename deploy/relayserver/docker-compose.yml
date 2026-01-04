@@ -7,10 +7,11 @@ services:
     environment:
       ASPNETCORE_URLS: http://0.0.0.0:5104
       ASPNETCORE_ENVIRONMENT: Production
-      # Auth config (server-only). Set these in the VM's environment (recommended) or in a mounted config file.
-      # Auth__Enabled: "true"
-      # Auth__JwtSigningKey: "..."
-      # Auth__GoogleClientIds__0: "..."
+      # Auth config (server-only).
+      # Set these via VM environment OR a `deploy/relayserver/.env` file (recommended).
+      Auth__Enabled: ${AUTH_ENABLED:-false}
+      Auth__JwtSigningKey: ${AUTH_JWT_SIGNING_KEY:-}
+      Auth__GoogleClientIds__0: ${AUTH_GOOGLE_CLIENT_ID:-}
     expose:
       - "5104"
 

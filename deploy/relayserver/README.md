@@ -43,6 +43,28 @@ Verify:
 - `https://$DOMAIN/healthz`
 - `https://$DOMAIN/auth/status`
 
+### Enabling Google-based server auth (required for client "Use Google account for authentication")
+If you want **Google-based sharing** (client setting `UseGoogleAccountAuth=true`), you must enable auth on the RelayServer.
+
+On the VM, create a `deploy/relayserver/.env` file (recommended) with:
+
+```bash
+DOMAIN="your.domain.or.ec2-public-dns"
+ACME_EMAIL="you@your-real-email.com"
+
+AUTH_ENABLED=true
+AUTH_JWT_SIGNING_KEY="make-this-long-random-32+chars"
+AUTH_GOOGLE_CLIENT_ID="your-google-oauth-desktop-client-id"
+```
+
+Then restart:
+
+```bash
+cd deploy/relayserver
+docker compose up -d --build
+docker compose restart relayserver
+```
+
 ## Bring up (HTTP-only, no domain)
 If you have no DNS name yet, run RelayServer without Caddy (plain HTTP on port 5104):
 
@@ -55,10 +77,10 @@ Then verify:
 - `http://YOUR_VM_PUBLIC_IP:5104/healthz`
 
 ## Server auth config (production)
-Set these as environment variables on the VM (recommended):
-- `Auth__Enabled=true`
-- `Auth__JwtSigningKey=<long random string>`
-- `Auth__GoogleClientIds__0=<your Google OAuth desktop client_id>`
+Set these as environment variables on the VM, or via `deploy/relayserver/.env` (see above):
+- `AUTH_ENABLED=true` (wired to `Auth__Enabled`)
+- `AUTH_JWT_SIGNING_KEY=<long random string>` (wired to `Auth__JwtSigningKey`)
+- `AUTH_GOOGLE_CLIENT_ID=<your Google OAuth desktop client_id>` (wired to `Auth__GoogleClientIds__0`)
 
 Then restart:
 
